@@ -11,13 +11,11 @@ fn main(){
 
     d.open();
 
-    thread::sleep(time::Duration::from_secs(20));
+    thread::sleep(time::Duration::from_secs(5));
 
     d.fill(
-        Color::from_sdl_color(sdl2::pixels::Color::BLUE)
+        Color::from(sdl2::pixels::Color::BLUE)
     );
-
-    d.set_refresh_rate(10);
 
     d.await_close();
 

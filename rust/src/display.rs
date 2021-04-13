@@ -26,7 +26,7 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
                 handle: None,
                 title: Arc::new(String::from("Simulation Engine")),
                 frame_delay: Arc::new(Mutex::new(Duration::from_millis(1000 / 60))),
-                draw_handler: Arc::new(Mutex::new(T::new(width, height)))
+                draw_handler: Arc::new(Mutex::new(T::new(width, height, Color::rgb(255, 255, 255))))
             }
         };
     }
@@ -93,19 +93,22 @@ impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
                     let mut fps_timer = Instant::now();
                     const SECOND_DURATION: Duration = Duration::from_secs(1);
 
-                    'mainloop: loop {
+                    'main: loop {
                         if !open.load(Ordering::SeqCst) {
-                            break 'mainloop;
+                            break 'main;
                         }
 
                         if frame_start_time.elapsed() >= {*frame_delay.lock().unwrap()} {
+                            let mut handler_guard = draw_handler.lock().unwrap();
+
+                            canvas.set_draw_color(handler_guard.get_bg_color());
+                            canvas.clear();
+
                             frame_start_time = Instant::now();
 
                             frame_count += 1;
 
-                            {
-                                draw_handler.lock().unwrap().draw(&mut canvas);
-                            }
+                            handler_guard.draw(&mut canvas);
 
                             canvas.present();
                         }
