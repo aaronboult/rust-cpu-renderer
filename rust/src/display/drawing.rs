@@ -1,11 +1,13 @@
 use sdl2::render::WindowCanvas;
-use sdl2::rect::{Rect, Point};
+use sdl2::rect::Point;
 
 use std::marker::Send;
 use std::ops::{Add, Sub};
 use std::cmp::{max, min, Eq, PartialEq};
 
 //#region Color
+// provides an API for color operations, and can convert
+// from and to sdl2 colors
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Color {
     r: u8,
@@ -36,10 +38,12 @@ impl Color {
         }
     }
 
+    // additive blending: takes the average of the sum
     pub fn blend_add(&self, other: Self) -> Self {
         self.merge(other, |a,b| (a + b) / 2)
     }
 
+    // subtractive blending: takes the average of the difference
     pub fn blend_sub(&self, other: Self) -> Self {
         self.merge(other, |a,b| (a - b) / 2)
     }
@@ -57,6 +61,7 @@ impl From<sdl2::pixels::Color> for Color {
     }
 }
 
+// implement basic additive coloring
 impl Add for Color {
     type Output = Self;
 
@@ -65,6 +70,7 @@ impl Add for Color {
     }
 }
 
+// implement basic subtractive coloring
 impl Sub for Color {
     type Output = Self;
 
@@ -75,8 +81,9 @@ impl Sub for Color {
 //#endregion
 
 //#region Draw Traits
+// provide a trait that allows the implementation of a new drawing style
 pub trait Drawable<T: Send + Sync = Self> {
-    fn new(width: u32, height: u32, bg_color: Color) -> Self;
+    fn new(bg_color: Color) -> Self;
     fn get_bg_color(&self) -> Color;
     fn set_bg_color(&mut self, color: Color);
     fn draw(&mut self, _: &mut WindowCanvas);
@@ -92,6 +99,7 @@ pub struct Pixel {
     y: i32
 }
 
+// allow easy conversion from a pixel into a point
 impl Into<Point> for Pixel {
     fn into(self) -> Point {
         Point::new(self.x, self.y)
@@ -100,13 +108,15 @@ impl Into<Point> for Pixel {
 //#endregion
 
 //#region PixelBuffer
+// buffer Pixels in specific locations and draw them to the screen at runtime
+// the buffer should only contain non-background pixels to avoid performance issues
 pub struct PixelBufferDrawer {
     contents: Vec<Pixel>,
     bg_color: Color
 }
 
 impl Drawable for PixelBufferDrawer {
-    fn new(width: u32, height: u32, bg_color: Color) -> Self {
+    fn new(bg_color: Color) -> Self {
         PixelBufferDrawer {
             contents: Vec::new(),
             bg_color
@@ -171,7 +181,6 @@ impl OperationQueue {
 
 #[derive(Debug, Copy, Clone)]
 enum CanvasOperationType {
-    FILL
 }
 
 pub struct CanvasDrawer {
@@ -180,7 +189,7 @@ pub struct CanvasDrawer {
 }
 
 impl Drawable for CanvasDrawer{
-    fn new(_: u32, _: u32, bg_color: Color) -> Self {
+    fn new(bg_color: Color) -> Self {
         CanvasDrawer{
             operations: OperationQueue::new(),
             bg_color
@@ -204,36 +213,10 @@ impl Drawable for CanvasDrawer{
     }
 
     fn fill(&mut self, color: Color){
-        self.bg_color = color;
-        self.operations.clear();
-    }
-}
-
-//#region Canvas Operations
-struct FillOperation {
-    optype: CanvasOperationType,
-    color: Color
-}
-impl FillOperation {
-    fn new(color: Color) -> Self {
-        Self {
-            optype: CanvasOperationType::FILL,
-            color
-        }
-    }
-}
-impl CanvasOperation for FillOperation {
-    fn get_type(&self) -> CanvasOperationType {
-        self.optype
-    }
-    fn execute(&self, canvas: &mut WindowCanvas) {
-        let size = canvas.output_size().unwrap();
-        canvas.set_draw_color(self.color);
-        canvas.fill_rect(
-            Rect::new(0, 0, size.0, size.1)
-        ).unwrap();
+        self.set_bg_color(color);
     }
 }
 //#endregion
 
+//#region Canvas Operations
 //#endregion
