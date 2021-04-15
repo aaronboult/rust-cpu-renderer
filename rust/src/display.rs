@@ -1,7 +1,7 @@
 extern crate sdl2;
 
-mod drawing;
-pub use drawing::{Drawable, PixelBufferDrawer, CanvasDrawer, Color};
+pub mod drawing;
+use drawing::{Drawable, PixelBufferDrawer, CanvasDrawer, Color};
 
 pub mod events;
 use events::{MouseMoveEvent, MouseInputEvent, MouseWheelEvent, KeyboardEvent, MouseInputType, KeyboardEventType};

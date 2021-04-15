@@ -1,5 +1,6 @@
 mod display;
-use display::{Display, PixelBufferDrawer, CanvasDrawer, Color};
+use display::{Display};
+use display::drawing::{PixelBufferDrawer, CanvasDrawer, Color};
 use display::events::{MouseMoveEvent, MouseInputEvent, MouseWheelEvent, KeyboardEvent};
 
 use std::{thread, time};
