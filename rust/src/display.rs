@@ -1,7 +1,7 @@
 extern crate sdl2;
 
 pub mod drawing;
-use drawing::{Drawable, PixelBufferDrawer, CanvasDrawer, Color};
+use drawing::{Drawable, Color};
 
 pub mod events;
 use events::{MouseMoveEvent, MouseInputEvent, MouseWheelEvent, KeyboardEvent, MouseInputType, KeyboardEventType};
@@ -19,15 +19,16 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::marker::Send;
 
+pub type HandlerResult = Result<(), ()>;
+
 // calls all handlers in $handlers until one returns an err
 // which tells the caller to stop propogating the event
 macro_rules! call_event_handlers {
     ($handlers:ident, $event:ident) => (
         let handlers_lock = $handlers.lock().unwrap();
         for i in 0..handlers_lock.len() {
-            let result = handlers_lock[i](&$event);
-            // break if error is returned, indicating propogation should halt
-            if result.is_err() {
+            // break if true is returned, indicating propogation should halt
+            if handlers_lock[i](&$event).is_err() {
                 break;
             }
         }
@@ -45,10 +46,10 @@ struct Screen<T> where T: Drawable + Send + Sync + 'static {
     frame_delay: Arc<Mutex<Duration>>,
     show_fps: Arc<AtomicBool>,
     draw_handler: Arc<Mutex<T>>,
-    mouse_move_handlers: Arc<Mutex<Vec<fn(e: &MouseMoveEvent) -> Result<(), ()>>>>,
-    mouse_input_handlers: Arc<Mutex<Vec<fn(e: &MouseInputEvent) -> Result<(), ()>>>>,
-    mouse_wheel_handlers: Arc<Mutex<Vec<fn(e: &MouseWheelEvent) -> Result<(), ()>>>>,
-    keyboard_handlers: Arc<Mutex<Vec<fn(e: &KeyboardEvent) -> Result<(), ()>>>>
+    mouse_move_handlers: Arc<Mutex<Vec<fn(e: &MouseMoveEvent) -> HandlerResult>>>,
+    mouse_input_handlers: Arc<Mutex<Vec<fn(e: &MouseInputEvent) -> HandlerResult>>>,
+    mouse_wheel_handlers: Arc<Mutex<Vec<fn(e: &MouseWheelEvent) -> HandlerResult>>>,
+    keyboard_handlers: Arc<Mutex<Vec<fn(e: &KeyboardEvent) -> HandlerResult>>>
 }
 
 impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
@@ -217,25 +218,25 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
         self.screen.draw_handler.lock().unwrap().fill(color);
     }
 
-    pub fn add_mouse_move_handler(&mut self, handler: fn(e: &MouseMoveEvent) -> Result<(), ()>) -> Result<(), &'static str> {
+    pub fn add_mouse_move_handler(&mut self, handler: fn(e: &MouseMoveEvent) -> HandlerResult) -> Result<(), &'static str> {
         let mut mouse_move_handlers_lock = self.screen.mouse_move_handlers.lock().unwrap();
         mouse_move_handlers_lock.push(handler);
         Ok(())
     }
 
-    pub fn add_mouse_input_handler(&mut self, handler: fn(e: &MouseInputEvent) -> Result<(), ()>) -> Result<(), &'static str> {
+    pub fn add_mouse_input_handler(&mut self, handler: fn(e: &MouseInputEvent) -> HandlerResult) -> Result<(), &'static str> {
         let mut mouse_input_handlers_lock = self.screen.mouse_input_handlers.lock().unwrap();
         mouse_input_handlers_lock.push(handler);
         Ok(())
     }
 
-    pub fn add_mouse_wheel_handler(&mut self, handler: fn(e: &MouseWheelEvent) -> Result<(), ()>) -> Result<(), &'static str> {
+    pub fn add_mouse_wheel_handler(&mut self, handler: fn(e: &MouseWheelEvent) -> HandlerResult) -> Result<(), &'static str> {
         let mut mouse_wheel_handlers_lock = self.screen.mouse_wheel_handlers.lock().unwrap();
         mouse_wheel_handlers_lock.push(handler);
         Ok(())
     }
 
-    pub fn add_keyboard_handler(&mut self, handler: fn(e: &KeyboardEvent) -> Result<(), ()>) -> Result<(), &'static str> {
+    pub fn add_keyboard_handler(&mut self, handler: fn(e: &KeyboardEvent) -> HandlerResult) -> Result<(), &'static str> {
         let mut keyboard_handlers_lock = self.screen.keyboard_handlers.lock().unwrap();
         keyboard_handlers_lock.push(handler);
         Ok(())
