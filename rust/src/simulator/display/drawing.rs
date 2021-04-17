@@ -92,22 +92,6 @@ impl Sub for Color {
 }
 //#endregion
 
-//#region Draw Traits
-// provide a trait that allows the implementation of a new drawing style
-pub trait Drawable<T: Send + Sync = Self> {
-    fn new(bg_color: Color) -> Self;
-    fn get_bg_color(&self) -> Color;
-    fn set_bg_color(&mut self, color: Color);
-    fn get_draw_color(&self) -> Color;
-    fn set_draw_color(&mut self, color: Color);
-    fn draw(&mut self, _: &mut WindowCanvas);
-    fn clear(&mut self);
-    fn draw_point(&mut self, point: (u32, u32));
-    fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32));
-    fn fill(&mut self, _: Color);
-}
-//#endregion
-
 //#region Pixel
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Pixel {
@@ -124,120 +108,174 @@ impl Into<Point> for Pixel {
 }
 //#endregion
 
-//#region PixelBuffer
-// buffer Pixels in specific locations and draw them to the screen at runtime
-// the buffer should only contain non-background pixels to avoid performance issues
-pub struct PixelBufferDrawer {
-    contents: Vec<Pixel>,
-    bg_color: Color,
-    draw_color: Color
+//#region Drawer
+#[derive(Copy, Clone, PartialEq)]
+pub enum DrawMode {
+    PIXELBUFFER,
+    CANVAS
 }
 
-impl Drawable for PixelBufferDrawer {
-    fn new(bg_color: Color) -> Self {
-        PixelBufferDrawer {
-            contents: Vec::new(),
+pub struct Drawer {
+    bg_color: Color,
+    draw_color: Color,
+    mode: DrawMode,
+    pixel_contents: Vec<Pixel>,
+    canvas_operations: OperationQueue
+}
+
+impl Drawer {
+    pub fn new(bg_color: Color, mode: DrawMode) -> Self {
+        Self {
             bg_color,
-            draw_color: Color::BLACK
+            draw_color: Color::BLACK,
+            mode,
+            pixel_contents: Vec::new(),
+            canvas_operations: OperationQueue::new()
         }
     }
 
-    fn clear(&mut self) {
-        self.contents = Vec::new();
+    pub fn get_canvas_operations(&self) -> Option<&OperationQueue> {
+        if self.mode == DrawMode::CANVAS {
+            return Some(&self.canvas_operations);
+        }
+        None
     }
 
-    fn get_bg_color(&self) -> Color {
+    pub fn get_last_canvas_operation(&self) -> Option<&Box<dyn CanvasOperation>> {
+        if self.mode == DrawMode::CANVAS {
+            return Some(self.canvas_operations.peek(0));
+        }
+        None
+    }
+
+    pub fn get_bg_color(&self) -> Color {
         self.bg_color
     }
 
-    fn set_bg_color(&mut self, color: Color) {
+    pub fn set_bg_color(&mut self, color: Color) {
         self.bg_color = color;
     }
 
-    fn get_draw_color(&self) -> Color {
+    pub fn get_draw_color(&self) -> Color{
         self.draw_color
     }
 
-    fn set_draw_color(&mut self, color: Color) {
+    pub fn set_draw_color(&mut self, color: Color) {
         self.draw_color = color;
     }
 
-    fn draw(&mut self, canvas: &mut WindowCanvas) {
-        for index in 0..self.contents.len() {
-            canvas.set_draw_color(self.contents[index].color);
-            canvas.draw_point(
-                self.contents[index]
-            ).unwrap();
+    pub fn draw_point(&mut self, point: (u32, u32)) {
+        match self.mode {
+            DrawMode::PIXELBUFFER => {
+                self.pixel_contents.push(
+                    Pixel {
+                        x: point.0 as i32,
+                        y: point.1 as i32,
+                        color: self.draw_color
+                    }
+                );
+            },
+            DrawMode::CANVAS => {
+                unimplemented!("Draw point not implemented for canvas");
+            }
         }
     }
 
-    fn draw_point(&mut self, point: (u32, u32)) {
-        self.contents.push(
-            Pixel {
-                x: point.0 as i32,
-                y: point.1 as i32,
-                color: self.draw_color
+    pub fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32)) {
+        match self.mode {
+            DrawMode::PIXELBUFFER => {
+                let (point_a, point_b) = if point_a.0 > point_b.0 {
+                    (point_b, point_a)
+                }
+                else {
+                    (point_a, point_b)
+                };
+                // using y=mx+c
+                // as well as the ratio dy:dx
+                let dy = point_b.1 as f32 - point_a.1 as f32;
+                let dx = point_b.0 as f32 - point_a.0 as f32;
+                if dy != 0.0 && dx != 0.0 {
+                    let m = dy / dx;
+                    let m_round = if m > 0.0 {
+                        m.ceil() as i32
+                    }
+                    else {
+                        m.floor() as i32
+                    };
+                    let c = point_a.1 as f32 - m * point_a.0 as f32;
+                    for x in point_a.0..point_b.0 {
+                        for y_diff in min(0, m_round)..max(0, m_round) {
+                            let y = m * x as f32 + c;
+                            self.draw_point((x, (y_diff + y as i32) as u32));
+                        }
+                    }
+                }
+                else if dy == 0.0 { // no change in y
+                    let min_x = min(point_a.0, point_b.0);
+                    let max_x = max(point_a.0, point_b.0);
+                    for x in min_x..max_x {
+                        self.draw_point((x, point_a.1));
+                    }
+                }
+                else { // no change in x
+                    let min_y = min(point_a.1, point_b.1);
+                    let max_y = max(point_a.1, point_b.1);
+                    for y in min_y..max_y {
+                        self.draw_point((point_a.0, y));
+                    }
+                }
+            },
+            DrawMode::CANVAS => {
+                unimplemented!("Draw line not implemented for canvas");
             }
-        );
+        }
     }
 
-    fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32)) {
-        let (point_a, point_b) = if point_a.0 > point_b.0 {
-            (point_b, point_a)
-        }
-        else {
-            (point_a, point_b)
-        };
-        // using y=mx+c
-        // as well as the ratio dy:dx
-        let dy = point_b.1 as f32 - point_a.1 as f32;
-        let dx = point_b.0 as f32 - point_a.0 as f32;
-        if dy != 0.0 && dx != 0.0 {
-            let m = dy / dx;
-            let m_round = if m > 0.0 {
-                m.ceil() as i32
-            }
-            else {
-                m.floor() as i32
-            };
-            let c = point_a.1 as f32 - m * point_a.0 as f32;
-            for x in point_a.0..point_b.0 {
-                for y_diff in min(0, m_round)..max(0, m_round) {
-                    let y = m * x as f32 + c;
-                    self.draw_point((x, (y_diff + y as i32) as u32));
+    pub fn fill(&mut self, color: Color) {
+        self.clear();
+        self.set_bg_color(color);
+    }
+
+    pub fn clear(&mut self) {
+        self.pixel_contents = Vec::new();
+        self.canvas_operations.clear();
+    }
+
+    pub fn draw(&mut self, canvas: &mut WindowCanvas) {
+        match self.mode {
+            DrawMode::PIXELBUFFER => {
+                for index in 0..self.pixel_contents.len() {
+                    canvas.set_draw_color(self.pixel_contents[index].color);
+                    canvas.draw_point(
+                        self.pixel_contents[index]
+                    ).unwrap();
+                }
+            },
+            DrawMode::CANVAS => {
+                canvas.set_draw_color(self.draw_color);
+                while self.canvas_operations.len() > 0 {
+                    let operation = self.canvas_operations.pop();
+                    println!("{:?}", operation.get_type());
+                    operation.execute(canvas);
                 }
             }
         }
-        else if dy == 0.0 { // no change in y
-            let min_x = min(point_a.0, point_b.0);
-            let max_x = max(point_a.0, point_b.0);
-            for x in min_x..max_x {
-                self.draw_point((x, point_a.1));
-            }
-        }
-        else { // no change in x
-            let min_y = min(point_a.1, point_b.1);
-            let max_y = max(point_a.1, point_b.1);
-            for y in min_y..max_y {
-                self.draw_point((point_a.0, y));
-            }
-        }
-    }
-
-    fn fill(&mut self, color: Color) {
-        self.contents = Vec::new();
-        self.bg_color = color;
     }
 }
+
 //#endregion
 
-//#region Canvas
-trait CanvasOperation: Send + Sync {
+//#region Canvas Operations
+#[derive(Debug, Copy, Clone)]
+pub enum CanvasOperationType {
+}
+
+pub trait CanvasOperation: Send + Sync {
     fn execute(&self, canvas: &mut WindowCanvas);
     fn get_type(&self) -> CanvasOperationType;
 }
 
-struct OperationQueue {
+pub struct OperationQueue {
     queue: Vec<Box<dyn CanvasOperation>>,
 }
 
@@ -254,6 +292,10 @@ impl OperationQueue {
         self.queue.remove(0)
     }
 
+    fn peek(&self, index: usize) -> &Box<dyn CanvasOperation> {
+        &self.queue[index]
+    }
+
     fn len(&self) -> usize {
         self.queue.len()
     }
@@ -262,70 +304,4 @@ impl OperationQueue {
         self.queue = Vec::new();
     }
 }
-
-#[derive(Debug, Copy, Clone)]
-enum CanvasOperationType {
-}
-
-pub struct CanvasDrawer {
-    operations: OperationQueue,
-    bg_color: Color,
-    draw_color: Color
-}
-
-impl Drawable for CanvasDrawer{
-    fn new(bg_color: Color) -> Self {
-        CanvasDrawer{
-            operations: OperationQueue::new(),
-            bg_color,
-            draw_color: Color::BLACK
-        }
-    }
-
-    fn clear(&mut self) {
-        unimplemented!("Unimplemented clear");
-    }
-
-    fn get_bg_color(&self) -> Color {
-        self.bg_color
-    }
-
-    fn set_bg_color(&mut self, color: Color) {
-        self.bg_color = color;
-    }
-
-    fn get_draw_color(&self) -> Color {
-        self.draw_color
-    }
-
-    fn set_draw_color(&mut self, color: Color) {
-        self.draw_color = color;
-    }
-
-    fn draw(&mut self, canvas: &mut WindowCanvas){
-        canvas.set_draw_color(self.draw_color);
-        while self.operations.len() > 0 {
-            let operation = self.operations.pop();
-            println!("{:?}", operation.get_type());
-            operation.execute(canvas);
-        }
-    }
-
-    fn draw_point(&mut self, point: (u32, u32)) {
-        println!("Point: {:?}", point);
-        unimplemented!("draw_point(..) is not yet implemented for canvas drawer");
-    }
-
-    fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32)) {
-        println!("Point:\n\tA: {:?}, B: {:?}", point_a, point_b);
-        unimplemented!("draw_line(..) is not yet implemented for canvas drawer");
-    }
-
-    fn fill(&mut self, color: Color){
-        self.set_bg_color(color);
-    }
-}
-//#endregion
-
-//#region Canvas Operations
 //#endregion

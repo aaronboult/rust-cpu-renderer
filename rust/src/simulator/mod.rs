@@ -1,6 +1,5 @@
 mod display;
 use display::{Display};
-use display::drawing::{PixelBufferDrawer};
 
 use std::{thread, time};
 
@@ -30,7 +29,10 @@ pub fn make() {
     let mut cube_transform = renderer::Transform::new();
     cube_transform.position.z = -20.0;
 
-    let mut d = Display::<PixelBufferDrawer>::new(512, 512);
+    let mut d = Display::new()
+        .set_size(512, 512)
+        .use_pixel_buffer()
+        .build();
 
     d.open();
 

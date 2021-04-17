@@ -3,10 +3,10 @@
 extern crate sdl2;
 
 pub mod drawing;
-use drawing::{Drawable, Color};
+use drawing::{Drawer, DrawMode, Color};
 
 pub mod events;
-use events::{MouseMoveEvent, MouseInputEvent, MouseWheelEvent, KeyboardEvent, MouseInputType, KeyboardEventType};
+use events::*;
 
 // sdl2
 use sdl2::event::{Event, WindowEvent};
@@ -19,7 +19,6 @@ use time::{Instant, Duration};
 // thread data sharing 
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::marker::Send;
 
 pub type HandlerResult = Result<(), ()>;
 
@@ -37,9 +36,10 @@ macro_rules! call_event_handlers {
     )
 }
 
+//#region Screen
 // the screen struct - holds all information necessary to
 // draw the window and dispatch events
-struct Screen<T> where T: Drawable + Send + Sync + 'static {
+struct Screen {
     open: Arc<AtomicBool>,
     width: Arc<AtomicU32>,
     height: Arc<AtomicU32>,
@@ -47,14 +47,14 @@ struct Screen<T> where T: Drawable + Send + Sync + 'static {
     title: Arc<String>,
     frame_delay: Arc<Mutex<Duration>>,
     show_fps: Arc<AtomicBool>,
-    draw_handler: Arc<Mutex<T>>,
+    draw_handler: Arc<Mutex<Drawer>>,
     mouse_move_handlers: Arc<Mutex<Vec<fn(e: &MouseMoveEvent) -> HandlerResult>>>,
     mouse_input_handlers: Arc<Mutex<Vec<fn(e: &MouseInputEvent) -> HandlerResult>>>,
     mouse_wheel_handlers: Arc<Mutex<Vec<fn(e: &MouseWheelEvent) -> HandlerResult>>>,
     keyboard_handlers: Arc<Mutex<Vec<fn(e: &KeyboardEvent) -> HandlerResult>>>
 }
 
-impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
+impl Screen {
     fn show(&mut self) {
 
         // clone all Arc references to be used within the mainloop thread
@@ -192,30 +192,82 @@ impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
         (self.width.load(Ordering::SeqCst), self.height.load(Ordering::SeqCst))
     }
 }
+//#endregion
 
+//#region Display & Builder
 // Wraps the Screen struct and provides an API to interact with it
-pub struct Display<T> where T: Drawable + Send + Sync + 'static {
-    screen: Screen<T>
+pub struct DisplayBuilder {
+    pub width: u32,
+    pub height: u32,
+    pub mode: DrawMode,
+    pub title: &'static str,
+    pub refresh_rate: u16
 }
 
-impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
-    pub fn new(width: u32, height: u32) -> Display<T>{
-        return Display::<T> {
-            screen: Screen::<T> {
+impl DisplayBuilder {
+    pub fn new() -> Self {
+        Self {
+            width: 512,
+            height: 512,
+            mode: DrawMode::CANVAS,
+            title: "Simulation Engine",
+            refresh_rate: 60
+        }
+    }
+
+    pub fn set_size(&mut self, width: u32, height: u32) -> &mut Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+
+    pub fn set_title(&mut self, title: &'static str) -> &mut Self {
+        self.title = title;
+        self
+    }
+
+    pub fn set_refresh_rate(&mut self, rate: u16) -> &mut Self {
+        self.refresh_rate = rate;
+        self
+    }
+
+    pub fn use_pixel_buffer(&mut self) -> &mut Self {
+        self.mode = DrawMode::PIXELBUFFER;
+        self
+    }
+
+    pub fn use_canvas_drawer(&mut self) -> &mut Self {
+        self.mode = DrawMode::CANVAS;
+        self
+    }
+
+    pub fn build(&self) -> Display {
+        Display {
+            screen: Screen {
                 open: Arc::new(AtomicBool::new(false)),
-                width: Arc::new(AtomicU32::new(width)),
-                height: Arc::new(AtomicU32::new(height)),
+                width: Arc::new(AtomicU32::new(self.width)),
+                height: Arc::new(AtomicU32::new(self.height)),
                 handle: None,
                 title: Arc::new(String::from("Simulation Engine")),
                 frame_delay: Arc::new(Mutex::new(Duration::from_millis(1000 / 60))),
                 show_fps: Arc::new(AtomicBool::new(false)),
-                draw_handler: Arc::new(Mutex::new(T::new(Color::rgb(255, 255, 255)))),
+                draw_handler: Arc::new(Mutex::new(Drawer::new(Color::WHITE, self.mode))),
                 mouse_move_handlers: Arc::new(Mutex::new(Vec::new())),
                 mouse_input_handlers: Arc::new(Mutex::new(Vec::new())),
                 mouse_wheel_handlers: Arc::new(Mutex::new(Vec::new())),
                 keyboard_handlers: Arc::new(Mutex::new(Vec::new()))
             }
-        };
+        }
+    }
+}
+
+pub struct Display {
+    screen: Screen
+}
+
+impl Display {
+    pub fn new() -> DisplayBuilder {
+        DisplayBuilder::new()
     }
 
     pub fn clear(&self) {
@@ -298,3 +350,4 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
         }
     }
 }
+//#endregion
