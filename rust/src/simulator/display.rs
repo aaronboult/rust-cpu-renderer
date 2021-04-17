@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate sdl2;
 
 pub mod drawing;
@@ -7,7 +9,7 @@ pub mod events;
 use events::{MouseMoveEvent, MouseInputEvent, MouseWheelEvent, KeyboardEvent, MouseInputType, KeyboardEventType};
 
 // sdl2
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::{Keycode};
 
 // threading
@@ -125,6 +127,16 @@ impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
                                     open.store(false, Ordering::SeqCst);
                                 },
 
+                                Event::Window { win_event, .. } => {
+                                    match win_event {
+                                        WindowEvent::Resized(new_width, new_height) => {
+                                            width.store(new_width as u32, Ordering::SeqCst);
+                                            height.store(new_height as u32, Ordering::SeqCst);
+                                        },
+                                        _ => {}
+                                    }
+                                },
+
                                 Event::KeyDown { keycode, scancode, keymod, repeat, .. } => {
                                     let keyboard_event_type: KeyboardEventType = if repeat {
                                         KeyboardEventType::KEYDOWN
@@ -175,6 +187,10 @@ impl<T> Screen<T> where T: Drawable + Send + Sync + 'static {
             )
         );
     }
+
+    pub fn get_size(&self) -> (u32, u32) {
+        (self.width.load(Ordering::SeqCst), self.height.load(Ordering::SeqCst))
+    }
 }
 
 // Wraps the Screen struct and provides an API to interact with it
@@ -202,6 +218,14 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
         };
     }
 
+    pub fn clear(&self) {
+        self.screen.draw_handler.lock().unwrap().clear();
+    }
+
+    pub fn get_window_size(&self) -> (u32, u32) {
+        self.screen.get_size()
+    }
+
     pub fn show_frame_rate(&mut self, show: bool) {
         self.screen.show_fps.store(show, Ordering::SeqCst);
     }
@@ -212,6 +236,22 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
 
     pub fn set_refresh_rate(&mut self, new_rate: u64) {
         *self.screen.frame_delay.lock().unwrap() = Duration::from_millis(1000 / new_rate);
+    }
+
+    pub fn get_draw_color(&self) -> Color {
+        self.screen.draw_handler.lock().unwrap().get_draw_color()
+    }
+
+    pub fn set_draw_color(&self, color: Color) {
+        self.screen.draw_handler.lock().unwrap().set_draw_color(color);
+    }
+
+    pub fn draw_point(&self, point: (u32, u32)) {
+        self.screen.draw_handler.lock().unwrap().draw_point(point);
+    }
+
+    pub fn draw_line(&self, point_a: (u32, u32), point_b: (u32, u32)) {
+        self.screen.draw_handler.lock().unwrap().draw_line(point_a, point_b);
     }
 
     pub fn fill(&self, color: Color) {
@@ -247,8 +287,14 @@ impl<T> Display<T> where T: Drawable + Send + Sync + 'static {
         self.screen.show();
     }
 
+    pub fn is_open(&self) -> bool {
+        self.screen.open.load(Ordering::SeqCst)
+    }
+
     pub fn await_close(&mut self) {
-        self.screen.open.store(true, Ordering::SeqCst);
-        self.screen.handle.take().unwrap().join().unwrap();
+        if self.screen.open.load(Ordering::SeqCst) {
+            self.screen.open.store(true, Ordering::SeqCst);
+            self.screen.handle.take().unwrap().join().unwrap();
+        }
     }
 }
