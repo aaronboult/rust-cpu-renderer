@@ -147,7 +147,7 @@ impl Add<Self> for Matrix {
                 "Cannot add matrix (l) of Height: {}, Width: {} with matrix (r) of dimensions Height: {}, Width: {}",
                 self.height, self.width,
                 rhs.height, rhs.width
-            )
+            ).to_string()
         )
     }
 }
@@ -161,7 +161,7 @@ impl Sub<Self> for Matrix {
                 "Cannot subtract matrix (l) of Height: {}, Width: {} with matrix (r) of dimensions Height: {}, Width: {}",
                 self.height, self.width,
                 rhs.height, rhs.width
-            )
+            ).to_string()
         )
     }
 }
@@ -175,7 +175,7 @@ impl Mul<Self> for Matrix {
                 "Cannot multiply matrix (l) of Height: {}, Width: {} with matrix (r) of dimensions Height: {}, Width: {}",
                 self.height, self.width,
                 rhs.height, rhs.width
-            )
+            ).to_string()
         )
     }
 }
@@ -188,7 +188,7 @@ impl Mul<Vector3D> for Matrix {
             &format!(
                 "Cannot multiply matrix of height {} with vector of height 3",
                 self.height
-            )
+            ).to_string()
         )
     }
 }
@@ -201,7 +201,7 @@ impl Mul<Vector2D> for Matrix {
             &format!(
                 "Cannot multiply matrix of height {} with vector of height 2",
                 self.height
-            )
+            ).to_string()
         )
     }
 }
@@ -249,15 +249,6 @@ impl From<Vector2D> for Matrix {
 }
 //#endregion
 
-//#region Vector Trait
-pub trait Vector: Into<Matrix> + Default {
-    fn get_dimension(&self) -> usize;
-    fn get_x(&self) -> f32;
-    fn get_y(&self) -> f32;
-    fn get_z(&self) -> f32;
-}
-//#endregion
-
 //#region Vector3D
 // vector3d is a special case of a matrix
 // where the width is 1 and the height is 3
@@ -275,13 +266,6 @@ impl Vector3D {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
-}
-
-impl Vector for Vector3D {
-    fn get_dimension(&self) -> usize { 3 }
-    fn get_x(&self) -> f32 { self.x }
-    fn get_y(&self) -> f32 { self.y }
-    fn get_z(&self) -> f32 { self.z }
 }
 
 impl fmt::Display for Vector3D {
@@ -376,11 +360,9 @@ impl From<Matrix> for Vector3D {
     fn from(other: Matrix) -> Self {
         if other.width != 1 || other.height != 3 {
             panic!(
-                format!(
-                    "Cannot cast Matrix to Vector3D with Height {} and Width {}",
-                    other.height,
-                    other.width
-                )
+                "Cannot cast Matrix to Vector3D with Height {} and Width {}",
+                other.height,
+                other.width
             );
         }
         Self {
@@ -414,13 +396,6 @@ impl Vector2D {
     pub fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
-}
-
-impl Vector for Vector2D {
-    fn get_dimension(&self) -> usize { 2 }
-    fn get_x(&self) -> f32 { self.x }
-    fn get_y(&self) -> f32 { self.y }
-    fn get_z(&self) -> f32 { 0.0 }
 }
 
 impl fmt::Display for Vector2D {
@@ -511,11 +486,9 @@ impl From<Matrix> for Vector2D {
     fn from(other: Matrix) -> Self {
         if other.width != 1 || other.height != 2 {
             panic!(
-                format!(
-                    "Cannot cast Matrix to Vector2D with Height {} and Width {}",
-                    other.height,
-                    other.width
-                )
+                "Cannot cast Matrix to Vector2D with Height {} and Width {}",
+                other.height,
+                other.width
             );
         }
         Self {
@@ -524,4 +497,18 @@ impl From<Matrix> for Vector2D {
         }
     }
 }
+
+macro_rules! vector2d_into_t {
+    ($tp:ty) => (
+        impl From<Vector2D> for ($tp, $tp) {
+            fn from(other: Vector2D) -> ($tp, $tp) {
+                (other.x as $tp, other.y as $tp)
+            }
+        }
+    )
+}
+
+vector2d_into_t!(u32);
+vector2d_into_t!(i32);
+vector2d_into_t!(f32);
 //#endregion
