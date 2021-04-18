@@ -3,7 +3,6 @@
 use sdl2::render::WindowCanvas;
 use sdl2::rect::Point;
 
-use std::marker::Send;
 use std::ops::{Add, Sub};
 use std::cmp::{max, min, Eq, PartialEq};
 
@@ -242,6 +241,9 @@ impl Drawer {
     }
 
     pub fn draw(&mut self, canvas: &mut WindowCanvas) {
+        canvas.set_draw_color(self.bg_color);
+        canvas.clear();
+
         match self.mode {
             DrawMode::PIXELBUFFER => {
                 for index in 0..self.pixel_contents.len() {
@@ -260,6 +262,8 @@ impl Drawer {
                 }
             }
         }
+
+        canvas.present();
     }
 }
 
@@ -270,7 +274,7 @@ impl Drawer {
 pub enum CanvasOperationType {
 }
 
-pub trait CanvasOperation: Send + Sync {
+pub trait CanvasOperation {
     fn execute(&self, canvas: &mut WindowCanvas);
     fn get_type(&self) -> CanvasOperationType;
 }
