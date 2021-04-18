@@ -184,11 +184,11 @@ impl Screen {
         self.draw_handler.set_draw_color(color);
     }
 
-    pub fn draw_point(&mut self, point: (u32, u32)) {
+    pub fn draw_point(&mut self, point: (i32, i32)) {
         self.draw_handler.draw_point(point);
     }
 
-    pub fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32)) {
+    pub fn draw_line(&mut self, point_a: (i32, i32), point_b: (i32, i32)) {
         self.draw_handler.draw_line(point_a, point_b);
     }
 
