@@ -2,7 +2,9 @@ mod simulator;
 
 fn main() -> Result<(), ()> {
 
-    simulator::make();
+    let mut sim = simulator::Simulator::new();
+
+    sim.start();
 
     Ok(())
 
