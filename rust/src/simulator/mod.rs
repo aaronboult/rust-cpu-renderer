@@ -3,26 +3,45 @@
 mod display;
 use display::Screen;
 
-use std::{thread, time};
+use std::collections::HashMap;
 
-mod renderer;
+pub mod renderer;
 use renderer::{Transform, Renderer};
 pub use renderer::geometry::{Vector2D, Vector3D};
 
-struct Object {
-    transform: Transform,
-    verticies: Vec<Vertex>
+pub mod time;
+
+// used for ID generation
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static OBJECTID: AtomicUsize = AtomicUsize::new(0);
+
+//#region Object and Vertex
+pub struct Object {
+    pub transform: Transform,
+    verticies: Vec<Vertex>,
+    id: usize
 }
 
 impl Object {
+    fn new_id() -> usize {
+        let id = OBJECTID.fetch_add(1, Ordering::SeqCst);
+        if id == usize::MAX {
+            OBJECTID.store(0, Ordering::SeqCst);
+        }
+        id
+    }
+
     pub fn new() -> Self {
         Self {
+            id: Object::new_id(),
             transform: Transform::new(),
             verticies: Vec::new()
         }
     }
     pub fn new_cube() -> Self {
         Self {
+            id: Object::new_id(),
             transform: Transform::new(),
             verticies: vec![
                 Vertex { // ltb
@@ -60,6 +79,27 @@ impl Object {
             ]
         }
     }
+
+    pub fn register(self, registrar: &mut Simulator) -> usize {
+        let id = self.id;
+        registrar.add_object(self);
+        id
+    }
+
+    pub fn set_position(mut self, x: f32, y: f32, z: f32) -> Self{
+        self.transform.set_position(x, y, z);
+        self
+    }
+
+    pub fn set_rotation(mut self, x: f32, y: f32, z: f32) -> Self {
+        self.transform.set_rotation(x, y, z);
+        self
+    }
+
+    pub fn set_scale(mut self, x: f32, y: f32, z: f32) -> Self {
+        self.transform.set_scale(x, y, z);
+        self
+    }
 }
 
 pub struct Vertex {
@@ -85,9 +125,11 @@ impl Vertex {
         self
     }
 }
+//#endregion
 
+//#region Simulator
 pub struct Simulator {
-    objects: Vec<Object>,
+    objects: HashMap<usize, Object>,
     renderer: Renderer,
     screen: Screen
 }
@@ -99,60 +141,63 @@ impl Simulator {
             .use_pixel_buffer()
             .build();
         Self {
-            objects: Vec::new(),
+            objects: HashMap::new(),
             renderer: Renderer::new(renderer::RenderMode::R3D),
             screen
         }
     }
 
     pub fn start(&mut self) {
-
-        let mut cube1 = Object::new_cube();
-        cube1.transform.position.z = -20.0;
-        cube1.transform.position.x = -1.0;
-        self.objects.push(cube1);
-
         self.screen.open();
+    }
 
-        'main: loop {
-            if !self.screen.is_open() {
-                break 'main;
-            }
-        
-            self.screen.clear();
+    pub fn update(&mut self) -> bool {
 
-            for obj in self.objects.iter_mut() {
-                
-                let mut projected_vertexs = vec![(-1, -1); 8];
+        if !self.screen.is_open() {
+            return false;
+        }
 
-                for i in 0..obj.verticies.len() {
-                    let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
-                    projected_vertexs[i] = projected_coords;
-                }
-                
-                for i in 0..projected_vertexs.len() {
-                    let current_vertex = (projected_vertexs[i].0 as u32, projected_vertexs[i].1 as u32);
-                    self.screen.draw_point(current_vertex);
-                    for o in obj.verticies[i].connects.iter() {
-                        self.screen.draw_line(
-                            current_vertex, 
-                            (
-                                projected_vertexs[*o].0 as u32,
-                                projected_vertexs[*o].1 as u32
-                            )
-                        );
-                    }
-                }
+        self.screen.clear();
 
-                obj.transform.rotation.x += 1.0;
-                obj.transform.rotation.y += 1.0;
-                obj.transform.rotation.z += 1.0;
-        
-                thread::sleep(time::Duration::from_millis(20));
-    
+        for obj in self.objects.values_mut() {
+
+            let mut projected_vertexs = vec![(-1, -1); 8];
+
+            for i in 0..obj.verticies.len() {
+                let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
+                projected_vertexs[i] = projected_coords;
             }
             
-            self.screen.refresh();
+            for i in 0..projected_vertexs.len() {
+                self.screen.draw_point(
+                    (projected_vertexs[i].0, projected_vertexs[i].1)
+                );
+                for o in obj.verticies[i].connects.iter() {
+                    self.screen.draw_line(
+                        (projected_vertexs[i].0, projected_vertexs[i].1), 
+                        (
+                            projected_vertexs[*o].0,
+                            projected_vertexs[*o].1
+                        )
+                    );
+                }
+            }
+
         }
+        
+        self.screen.refresh();
+
+        true
+    }
+
+    pub fn add_object(&mut self, object: Object) -> usize {
+        let id = object.id;
+        self.objects.insert(id, object);
+        id
+    }
+
+    pub fn get_object_by_id(&mut self, id: usize) -> &mut Object {
+        self.objects.get_mut(&id).unwrap()
     }
 }
+//#endregion
