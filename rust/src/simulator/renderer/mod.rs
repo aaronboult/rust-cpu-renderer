@@ -27,15 +27,28 @@ impl Camera {
 
 pub struct Renderer {
     mode: RenderMode,
-    camera: Camera
+    camera: Camera,
+    resolution_x: f32,
+    resolution_y: f32
 }
 
 impl Renderer {
     pub fn new(mode: RenderMode) -> Self {
         Self {
             mode,
-            camera: Camera::new()
+            camera: Camera::new(),
+            resolution_x: 1920.0,
+            resolution_y: 1080.0
         }
+    }
+
+    pub fn get_resolution(&self) -> (f32, f32) {
+        (self.resolution_x, self.resolution_y)
+    }
+
+    pub fn set_resolution(&mut self, resolution_x: f32, resolution_y: f32) {
+        self.resolution_x = resolution_x;
+        self.resolution_y = resolution_y;
     }
 
     pub fn project_to_screen(&self, transform: &Transform, vertex: &Vector3D, window_size: (u32, u32)) -> (i32, i32) {
@@ -49,7 +62,7 @@ impl Renderer {
         }
     }
 
-    fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, window_size: (u32, u32)) -> (i32, i32) {
+    pub fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, window_size: (u32, u32)) -> (i32, i32) {
 
         let point = Vector3D::new(
             vertex.x,
@@ -95,8 +108,8 @@ impl Renderer {
         let mut y: f32 = -1.0;
 
         if rotated_projection.z != 0.0 {
-            x = (rotated_projection.x * (window_size.0 as f32)) / (rotated_projection.z / recording_screen_size.x) * self.camera.view_plane_z;
-            y = (rotated_projection.y * (window_size.1 as f32)) / (rotated_projection.z / recording_screen_size.y) * self.camera.view_plane_z;
+            x = (rotated_projection.x * self.resolution_x) / (rotated_projection.z / recording_screen_size.x) * self.camera.view_plane_z;
+            y = (rotated_projection.y * self.resolution_y) / (rotated_projection.z / recording_screen_size.y) * self.camera.view_plane_z;
         }
 
         (
@@ -121,5 +134,23 @@ impl Transform {
             rotation: Vector3D::ZERO,
             scale: Vector3D::ONE
         }
+    }
+
+    pub fn set_position(&mut self, x: f32, y: f32, z: f32) {
+        self.position.x = x;
+        self.position.y = y;
+        self.position.z = z;
+    }
+
+    pub fn set_rotation(&mut self, x: f32, y: f32, z: f32) {
+        self.rotation.x = x;
+        self.rotation.y = y;
+        self.rotation.z = z;
+    }
+
+    pub fn set_scale(&mut self, x: f32, y: f32, z: f32) {
+        self.scale.x = x;
+        self.scale.y = y;
+        self.scale.z = z;
     }
 }
