@@ -6,6 +6,8 @@ use sdl2::rect::Point;
 use std::ops::{Add, Sub};
 use std::cmp::{max, min, Eq, PartialEq};
 
+use std::collections::HashMap;
+
 //#region Color
 // provides an API for color operations, and can convert
 // from and to sdl2 colors
@@ -118,7 +120,7 @@ pub struct Drawer {
     bg_color: Color,
     draw_color: Color,
     mode: DrawMode,
-    pixel_contents: Vec<Pixel>,
+    pixel_contents: HashMap<(i32, i32), Pixel>,
     canvas_operations: OperationQueue
 }
 
@@ -128,7 +130,7 @@ impl Drawer {
             bg_color,
             draw_color: Color::BLACK,
             mode,
-            pixel_contents: Vec::new(),
+            pixel_contents: HashMap::new(),
             canvas_operations: OperationQueue::new()
         }
     }
@@ -163,13 +165,15 @@ impl Drawer {
         self.draw_color = color;
     }
 
-    pub fn draw_point(&mut self, point: (u32, u32)) {
+    pub fn draw_point(&mut self, point: (i32, i32)) {
+        // println!("{:?}", point);
         match self.mode {
             DrawMode::PIXELBUFFER => {
-                self.pixel_contents.push(
+                self.pixel_contents.insert(
+                    point,
                     Pixel {
-                        x: point.0 as i32,
-                        y: point.1 as i32,
+                        x: point.0,
+                        y: point.1,
                         color: self.draw_color
                     }
                 );
@@ -180,7 +184,7 @@ impl Drawer {
         }
     }
 
-    pub fn draw_line(&mut self, point_a: (u32, u32), point_b: (u32, u32)) {
+    pub fn draw_line(&mut self, point_a: (i32, i32), point_b: (i32, i32)) {
         match self.mode {
             DrawMode::PIXELBUFFER => {
                 let (point_a, point_b) = if point_a.0 > point_b.0 {
@@ -205,7 +209,7 @@ impl Drawer {
                     for x in point_a.0..point_b.0 {
                         for y_diff in min(0, m_round)..max(0, m_round) {
                             let y = m * x as f32 + c;
-                            self.draw_point((x, (y_diff + y as i32) as u32));
+                            self.draw_point((x, y_diff + y as i32));
                         }
                     }
                 }
@@ -236,7 +240,7 @@ impl Drawer {
     }
 
     pub fn clear(&mut self) {
-        self.pixel_contents = Vec::new();
+        self.pixel_contents.clear();
         self.canvas_operations.clear();
     }
 
@@ -246,10 +250,10 @@ impl Drawer {
 
         match self.mode {
             DrawMode::PIXELBUFFER => {
-                for index in 0..self.pixel_contents.len() {
-                    canvas.set_draw_color(self.pixel_contents[index].color);
+                for pixel in self.pixel_contents.values() {
+                    canvas.set_draw_color(pixel.color);
                     canvas.draw_point(
-                        self.pixel_contents[index]
+                        *pixel
                     ).unwrap();
                 }
             },
