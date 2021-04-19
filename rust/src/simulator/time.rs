@@ -17,10 +17,11 @@ impl Time {
 
     pub fn update(&mut self) -> usize {
         self.last_update = Instant::now();
-        self.delta_time = self.last_update.elapsed().as_millis() as usize
+        self.delta_time = self.last_update.elapsed().as_millis() as usize;
+        self.delta_time
     }
 
     pub fn get_delta_time(&self) -> usize {
-        self.delta_timec
+        self.delta_time
     }
 }

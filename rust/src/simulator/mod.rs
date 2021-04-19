@@ -133,7 +133,7 @@ pub struct Simulator {
     objects: HashMap<usize, Object>,
     renderer: Renderer,
     screen: Screen,
-    time: Time
+    pub time: Time
 }
 
 impl Simulator {
@@ -154,13 +154,13 @@ impl Simulator {
         self.screen.open();
     }
 
-    pub fn update(&mut self) -> Result<f32, ()> {
+    pub fn update(&mut self) -> Result<usize, ()> {
 
         if !self.screen.is_open() {
             return Err(());
         }
 
-        let delta = time.update();
+        let delta = self.time.update();
 
         self.screen.clear();
 
