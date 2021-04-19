@@ -1,6 +1,6 @@
 // time based structs and functions, notably deltatime
 
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 pub struct Time {
     delta_time: usize,
