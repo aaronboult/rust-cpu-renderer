@@ -33,12 +33,12 @@ fn main() -> Result<(), ()> {
 
     sim.start();
 
-    while sim.update() {
+    while sim.update().is_ok() {
         for id in cube_ids.iter() {
             let cube = sim.get_object_by_id(*id);
-            cube.transform.rotation.x += rng.gen_range(RANGE) * 0.1;
-            cube.transform.rotation.y += rng.gen_range(RANGE) * 0.1;
-            cube.transform.rotation.z += rng.gen_range(RANGE) * 0.1;
+            cube.transform.rotation.x += rng.gen_range(RANGE) * 0.1 * sim.time.get_delta_time();
+            cube.transform.rotation.y += rng.gen_range(RANGE) * 0.1 * sim.time.get_delta_time();
+            cube.transform.rotation.z += rng.gen_range(RANGE) * 0.1 * sim.time.get_delta_time();
             // cube.transform.position.x += rng.gen_range(RANGE) / 20.0;
             // cube.transform.position.y += rng.gen_range(RANGE) / 20.0;
             // cube.transform.position.z += rng.gen_range(RANGE) / 20.0;

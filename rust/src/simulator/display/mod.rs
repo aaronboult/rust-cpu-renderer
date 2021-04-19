@@ -2,7 +2,7 @@
 
 extern crate sdl2;
 
-pub mod drawing;
+mod drawing;
 use drawing::{Drawer, DrawMode, Color};
 
 pub mod events;

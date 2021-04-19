@@ -5,11 +5,12 @@ use display::Screen;
 
 use std::collections::HashMap;
 
-pub mod renderer;
+mod renderer;
 use renderer::{Transform, Renderer};
 pub use renderer::geometry::{Vector2D, Vector3D};
 
 pub mod time;
+use time::Time;
 
 // used for ID generation
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -131,7 +132,8 @@ impl Vertex {
 pub struct Simulator {
     objects: HashMap<usize, Object>,
     renderer: Renderer,
-    screen: Screen
+    screen: Screen,
+    time: Time
 }
 
 impl Simulator {
@@ -143,6 +145,7 @@ impl Simulator {
         Self {
             objects: HashMap::new(),
             renderer: Renderer::new(renderer::RenderMode::R3D),
+            time: Time::new(),
             screen
         }
     }
@@ -151,11 +154,13 @@ impl Simulator {
         self.screen.open();
     }
 
-    pub fn update(&mut self) -> bool {
+    pub fn update(&mut self) -> Result<f32, ()> {
 
         if !self.screen.is_open() {
-            return false;
+            return Err(());
         }
+
+        let delta = time.update();
 
         self.screen.clear();
 
@@ -187,7 +192,7 @@ impl Simulator {
         
         self.screen.refresh();
 
-        true
+        Ok(delta)
     }
 
     pub fn add_object(&mut self, object: Object) -> usize {
