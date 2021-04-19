@@ -14,12 +14,5 @@ default-features = false
 [dependencies.rand]
 verion = "0.8.3"
 
-[dev-dependencies]
-criterion = "0.3.4"
-
-[[bench]]
-name = "bench_3d_projection"
-hardness = false
-
 [build-dependencies]
 winres = "0.1.11"
