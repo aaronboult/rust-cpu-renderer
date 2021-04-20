@@ -42,8 +42,6 @@ pub struct Screen {
     width: u32,
     height: u32,
     title: &'static str,
-    frame_delay: Duration,
-    show_fps: bool,
     draw_handler: Drawer,
     mouse_move_handlers: Vec<fn(e: &MouseMoveEvent) -> HandlerResult>,
     mouse_input_handlers: Vec<fn(e: &MouseInputEvent) -> HandlerResult>,
@@ -51,7 +49,9 @@ pub struct Screen {
     keyboard_handlers: Vec<fn(e: &KeyboardEvent) -> HandlerResult>,
     canvas: WindowCanvas,
     event_pump: EventPump,
-    frame_start_time: Option<Instant>,
+    refresh_delay: Duration,
+    refresh_start: Option<Instant>,
+    show_fps: bool,
     fps_timer: Option<Instant>,
     frame_count: u32
 }
@@ -69,9 +69,9 @@ impl Screen {
             // set up values to maintain frame rate
             self.fps_timer = Some(Instant::now());
     
-            // only draw the frame if enough time has passed to maintain the frame rate
-            if self.frame_start_time.unwrap().elapsed() >= self.frame_delay {
-                self.frame_start_time = Some(Instant::now());
+            // only draw the frame if enough time has passed to maintain the refresh rate
+            if self.refresh_start.unwrap().elapsed() >= self.refresh_delay {
+                self.refresh_start = Some(Instant::now());
                 self.frame_count += 1;
 
                 self.draw_handler.draw(&mut self.canvas);
@@ -173,7 +173,7 @@ impl Screen {
     }
 
     pub fn set_refresh_rate(&mut self, new_rate: u64) {
-        self.frame_delay = Duration::from_millis(1000 / new_rate);
+        self.refresh_delay = Duration::from_millis(1000 / new_rate);
     }
 
     pub fn get_draw_color(&self) -> Color {
@@ -217,7 +217,7 @@ impl Screen {
     }
 
     pub fn open(&mut self) {
-        self.frame_start_time = Some(Instant::now());
+        self.refresh_start = Some(Instant::now());
         self.fps_timer = Some(Instant::now());
         self.open = true;
         self.refresh();
@@ -294,8 +294,6 @@ impl ScreenBuilder {
             width: self.width,
             height: self.height,
             title: "Simulation Engine",
-            frame_delay: Duration::from_millis(1000 / 60),
-            show_fps: false,
             draw_handler: Drawer::new(Color::WHITE, self.mode),
             mouse_move_handlers: Vec::new(),
             mouse_input_handlers: Vec::new(),
@@ -303,7 +301,9 @@ impl ScreenBuilder {
             keyboard_handlers: Vec::new(),
             canvas,
             event_pump,
-            frame_start_time: None,
+            refresh_delay: Duration::from_millis(1000 / self.refresh_rate as u64),
+            show_fps: false,
+            refresh_start: None,
             fps_timer: None,
             frame_count: 0
         }
