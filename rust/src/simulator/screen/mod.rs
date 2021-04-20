@@ -66,9 +66,6 @@ impl Screen {
     pub fn refresh(&mut self) {
         if self.open {
     
-            // set up values to maintain frame rate
-            self.fps_timer = Some(Instant::now());
-    
             // only draw the frame if enough time has passed to maintain the refresh rate
             if self.refresh_start.unwrap().elapsed() >= self.refresh_delay {
                 self.refresh_start = Some(Instant::now());

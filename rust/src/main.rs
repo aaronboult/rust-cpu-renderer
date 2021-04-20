@@ -18,9 +18,11 @@ fn main() -> Result<(), ()> {
         .lock_frame_rate(60)
         .build();
 
+    sim.show_fps(true);
+
     let mut cube_ids: Vec<usize> = Vec::new();
 
-    for _ in 0..1 {
+    for _ in 0..100 {
         cube_ids.push(
             Object::new_cube()
                 .set_position(
@@ -41,7 +43,7 @@ fn main() -> Result<(), ()> {
 
     while sim.update().is_ok() {
         let delta = sim.time.get_delta_time();
-        println!("{}", delta);
+        // println!("{}", delta);
         for id in cube_ids.iter() {
             let cube = sim.get_object_by_id(*id);
             cube.transform.rotation.x += rng.gen_range(ROTATERANGE) * delta;

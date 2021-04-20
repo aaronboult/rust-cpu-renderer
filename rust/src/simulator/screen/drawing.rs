@@ -120,7 +120,7 @@ pub struct Drawer {
     bg_color: Color,
     draw_color: Color,
     mode: DrawMode,
-    pixel_contents: HashMap<(i32, i32), Pixel>,
+    pixel_contents: HashMap<(i32, i32), Pixel>, // <---- Over 500k pixels on a 600x800 screen (more than the number of pixels on the screen); causes lag
     canvas_operations: OperationQueue
 }
 
@@ -166,7 +166,6 @@ impl Drawer {
     }
 
     pub fn draw_point(&mut self, point: (i32, i32)) {
-        // println!("{:?}", point);
         match self.mode {
             DrawMode::PIXELBUFFER => {
                 self.pixel_contents.insert(
@@ -250,6 +249,7 @@ impl Drawer {
 
         match self.mode {
             DrawMode::PIXELBUFFER => {
+                println!("{}", self.pixel_contents.len());
                 for pixel in self.pixel_contents.values() {
                     canvas.set_draw_color(pixel.color);
                     canvas.draw_point(

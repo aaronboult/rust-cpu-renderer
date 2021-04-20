@@ -10,7 +10,9 @@ use renderer::{Transform, Renderer, RenderMode};
 pub use renderer::geometry::{Vector2D, Vector3D};
 
 pub mod time;
-use time::Time;
+use time::{Time, Instant, Duration};
+
+use std::thread::sleep;
 
 // used for ID generation
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -135,7 +137,7 @@ pub struct Simulator {
     screen: Screen,
     pub time: Time,
     restrict_frame_rate: bool,
-    target_frame_rate: u16
+    frame_delay: Duration
 }
 
 impl Simulator {
@@ -148,6 +150,8 @@ impl Simulator {
         if !self.screen.is_open() {
             return Err(());
         }
+
+        let frame_start_time = Instant::now();
 
         let delta = self.time.update();
 
@@ -181,7 +185,29 @@ impl Simulator {
         
         self.screen.refresh();
 
+        if self.restrict_frame_rate {
+            if frame_start_time.elapsed() < self.frame_delay {
+                sleep(self.frame_delay - frame_start_time.elapsed());
+            }
+        }
+
         Ok(delta)
+    }
+
+    pub fn restrict_frame_rate(&mut self) {
+        self.restrict_frame_rate = true;
+    }
+
+    pub fn release_frame_rate(&mut self) {
+        self.restrict_frame_rate = false;
+    }
+
+    pub fn set_target_frame_rate(&mut self, target: u16) {
+        self.frame_delay = Duration::from_millis(1000 / target as u64);
+    }
+
+    pub fn show_fps(&mut self, show: bool) {
+        self.screen.show_frame_rate(show);
     }
 
     pub fn add_object(&mut self, object: Object) -> usize {
@@ -269,7 +295,7 @@ impl SimulationBuilder {
             time: Time::new(),
             screen,
             restrict_frame_rate: self.restrict_frame_rate,
-            target_frame_rate: self.target_frame_rate
+            frame_delay: Duration::from_millis(1000 / self.target_frame_rate as u64)
         }
     }
 }

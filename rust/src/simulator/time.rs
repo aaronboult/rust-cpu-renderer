@@ -1,6 +1,7 @@
 // time based structs and functions, notably deltatime
 
-use std::time::{Instant};
+// reexport the Instant and Duration structs
+pub use std::time::{Instant, Duration};
 
 pub struct Time {
     delta_time: f32,
