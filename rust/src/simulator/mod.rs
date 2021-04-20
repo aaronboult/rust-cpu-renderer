@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-mod display;
-use display::Screen;
+mod screen;
+use screen::Screen;
 
 use std::collections::HashMap;
 
 mod renderer;
-use renderer::{Transform, Renderer};
+use renderer::{Transform, Renderer, RenderMode};
 pub use renderer::geometry::{Vector2D, Vector3D};
 
 pub mod time;
@@ -133,28 +133,17 @@ pub struct Simulator {
     objects: HashMap<usize, Object>,
     renderer: Renderer,
     screen: Screen,
-    pub time: Time
+    pub time: Time,
+    restrict_frame_rate: bool,
+    target_frame_rate: u16
 }
 
 impl Simulator {
-    pub fn new() -> Self {
-        let screen = Screen::new()
-            .set_size(512, 512)
-            .use_pixel_buffer()
-            .build();
-        Self {
-            objects: HashMap::new(),
-            renderer: Renderer::new(renderer::RenderMode::R3D),
-            time: Time::new(),
-            screen
-        }
-    }
-
     pub fn start(&mut self) {
         self.screen.open();
     }
 
-    pub fn update(&mut self) -> Result<usize, ()> {
+    pub fn update(&mut self) -> Result<f32, ()> {
 
         if !self.screen.is_open() {
             return Err(());
@@ -203,6 +192,85 @@ impl Simulator {
 
     pub fn get_object_by_id(&mut self, id: usize) -> &mut Object {
         self.objects.get_mut(&id).unwrap()
+    }
+}
+//#endregion
+
+//#region SimulationBuilder
+pub struct SimulationBuilder {
+    restrict_frame_rate: bool,
+    target_frame_rate: u16,
+    render_mode: RenderMode,
+    width: u32,
+    height: u32
+}
+
+impl SimulationBuilder {
+    pub fn new() -> Self {
+        Self {
+            restrict_frame_rate: false,
+            target_frame_rate: 60,
+            render_mode: RenderMode::R2D,
+            width: 512,
+            height: 512
+        }
+    }
+
+    pub fn set_size(&mut self, width: u32, height: u32) -> &mut Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+
+    pub fn restrict_frame_rate(&mut self) -> &mut Self {
+        self.restrict_frame_rate = true;
+        self
+    }
+
+    pub fn release_frame_rate(&mut self) -> &mut Self {
+        self.restrict_frame_rate = false;
+        self
+    }
+
+    pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.target_frame_rate = target;
+        self
+    }
+
+    pub fn lock_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.restrict_frame_rate = true;
+        self.target_frame_rate = target;
+        self
+    }
+
+    pub fn set_render_mode(&mut self, mode: RenderMode) -> &mut Self {
+        self.render_mode = mode;
+        self
+    }
+
+    pub fn use_3d(&mut self) -> &mut Self {
+        self.render_mode = RenderMode::R3D;
+        self
+    }
+
+    pub fn use_2d(&mut self) -> &mut Self {
+        self.render_mode = RenderMode::R2D;
+        self
+    }
+
+    pub fn build(&self) -> Simulator {
+        let screen = Screen::new()
+            .set_size(self.width, self.height)
+            .use_pixel_buffer()
+            .build();
+        Simulator {
+            objects: HashMap::new(),
+            renderer: Renderer::new(self.render_mode),
+            time: Time::new(),
+            screen,
+            restrict_frame_rate: self.restrict_frame_rate,
+            target_frame_rate: self.target_frame_rate
+        }
     }
 }
 //#endregion

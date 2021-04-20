@@ -2,6 +2,7 @@ pub mod geometry;
 use geometry::{Matrix, Vector2D, Vector3D};
 
 #[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub enum RenderMode {
     R2D,
     R3D
