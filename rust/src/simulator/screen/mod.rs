@@ -49,8 +49,6 @@ pub struct Screen {
     keyboard_handlers: Vec<fn(e: &KeyboardEvent) -> HandlerResult>,
     canvas: WindowCanvas,
     event_pump: EventPump,
-    refresh_delay: Duration,
-    refresh_start: Option<Instant>,
     show_fps: bool,
     fps_timer: Option<Instant>,
     frame_count: u32
@@ -65,14 +63,10 @@ impl Screen {
 
     pub fn refresh(&mut self) {
         if self.open {
-    
-            // only draw the frame if enough time has passed to maintain the refresh rate
-            if self.refresh_start.unwrap().elapsed() >= self.refresh_delay {
-                self.refresh_start = Some(Instant::now());
-                self.frame_count += 1;
 
-                self.draw_handler.draw(&mut self.canvas);
-            }
+            self.frame_count += 1;
+
+            self.draw_handler.draw(&mut self.canvas);
 
             if self.fps_timer.unwrap().elapsed() >= Screen::SECOND_DURATION && self.show_fps {
                 println!("Frames elapsed: {}", self.frame_count);
@@ -169,10 +163,6 @@ impl Screen {
         self.title = new_title;
     }
 
-    pub fn set_refresh_rate(&mut self, new_rate: u64) {
-        self.refresh_delay = Duration::from_millis(1000 / new_rate);
-    }
-
     pub fn get_draw_color(&self) -> Color {
         self.draw_handler.get_draw_color()
     }
@@ -214,7 +204,6 @@ impl Screen {
     }
 
     pub fn open(&mut self) {
-        self.refresh_start = Some(Instant::now());
         self.fps_timer = Some(Instant::now());
         self.open = true;
         self.refresh();
@@ -235,8 +224,7 @@ pub struct ScreenBuilder {
     pub width: u32,
     pub height: u32,
     pub mode: DrawMode,
-    pub title: &'static str,
-    pub refresh_rate: u16
+    pub title: &'static str
 }
 
 impl ScreenBuilder {
@@ -245,38 +233,51 @@ impl ScreenBuilder {
             width: 512,
             height: 512,
             mode: DrawMode::CANVAS,
-            title: "Simulation Engine",
-            refresh_rate: 60
+            title: "Simulation Engine"
         }
     }
 
-    pub fn set_size(&mut self, width: u32, height: u32) -> &mut Self {
+    pub fn set_size(mut self, width: u32, height: u32) -> Self {
+        self.ref_set_size(width, height);
+        self
+    }
+
+    pub fn ref_set_size(&mut self, width: u32, height: u32) -> &mut Self {
         self.width = width;
         self.height = height;
         self
     }
 
-    pub fn set_title(&mut self, title: &'static str) -> &mut Self {
+    pub fn set_title(mut self, title: &'static str) -> Self {
+        self.ref_set_title(title);
+        self
+    }
+
+    pub fn ref_set_title(&mut self, title: &'static str) -> &mut Self {
         self.title = title;
         self
     }
 
-    pub fn set_refresh_rate(&mut self, rate: u16) -> &mut Self {
-        self.refresh_rate = rate;
+    pub fn use_pixel_buffer(mut self) -> Self {
+        self.ref_use_pixel_buffer();
         self
     }
 
-    pub fn use_pixel_buffer(&mut self) -> &mut Self {
+    pub fn ref_use_pixel_buffer(&mut self) -> &mut Self {
         self.mode = DrawMode::PIXELBUFFER;
         self
     }
 
-    pub fn use_canvas_drawer(&mut self) -> &mut Self {
+    pub fn ref_use_canvas_drawer(&mut self) -> &mut Self {
         self.mode = DrawMode::CANVAS;
         self
     }
 
-    pub fn build(&self) -> Screen {
+    pub fn build(self) -> Screen {
+        self.ref_build()
+    }
+
+    pub fn ref_build(&self) -> Screen {
         let context = sdl2::init().unwrap();
         let video = context.video().unwrap();
         let window = video.window(&self.title, self.width, self.height)
@@ -291,16 +292,14 @@ impl ScreenBuilder {
             width: self.width,
             height: self.height,
             title: "Simulation Engine",
-            draw_handler: Drawer::new(Color::WHITE, self.mode),
+            draw_handler: Drawer::new(Color::WHITE, Color::BLACK, self.mode),
             mouse_move_handlers: Vec::new(),
             mouse_input_handlers: Vec::new(),
             mouse_wheel_handlers: Vec::new(),
             keyboard_handlers: Vec::new(),
             canvas,
             event_pump,
-            refresh_delay: Duration::from_millis(1000 / self.refresh_rate as u64),
             show_fps: false,
-            refresh_start: None,
             fps_timer: None,
             frame_count: 0
         }

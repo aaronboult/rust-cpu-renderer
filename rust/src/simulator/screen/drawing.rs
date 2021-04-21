@@ -125,10 +125,10 @@ pub struct Drawer {
 }
 
 impl Drawer {
-    pub fn new(bg_color: Color, mode: DrawMode) -> Self {
+    pub fn new(bg_color: Color, draw_color: Color, mode: DrawMode) -> Self {
         Self {
             bg_color,
-            draw_color: Color::BLACK,
+            draw_color,
             mode,
             pixel_contents: HashMap::new(),
             canvas_operations: OperationQueue::new()
@@ -249,8 +249,13 @@ impl Drawer {
 
         match self.mode {
             DrawMode::PIXELBUFFER => {
-                println!("{}", self.pixel_contents.len());
+                // println!("{}", self.pixel_contents.len());
                 for pixel in self.pixel_contents.values() {
+                    // let p = canvas.read_pixels(sdl2::rect::Rect::new(pixel.x, pixel.y, 1, 1), sdl2::pixels::PixelFormatEnum::RGB24).unwrap();
+                    // if sdl2::pixels::Color::RGB(p[0], p[1], p[2]) != sdl2::pixels::Color::BLACK {
+                    //     println!("{:?}", p);
+                    //     println!("Duplicate: {:?}", pixel);
+                    // }
                     canvas.set_draw_color(pixel.color);
                     canvas.draw_point(
                         *pixel

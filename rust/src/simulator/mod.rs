@@ -137,7 +137,8 @@ pub struct Simulator {
     screen: Screen,
     pub time: Time,
     restrict_frame_rate: bool,
-    frame_delay: Duration
+    frame_delay: Duration,
+    last_frame_start: Instant
 }
 
 impl Simulator {
@@ -151,11 +152,21 @@ impl Simulator {
             return Err(());
         }
 
-        let frame_start_time = Instant::now();
+        if self.restrict_frame_rate {
+            while self.last_frame_start.elapsed() < self.frame_delay {}
+        }
+
+        self.last_frame_start = Instant::now();
 
         let delta = self.time.update();
 
         self.screen.clear();
+
+        for x in 0..1920 {
+            for y in 0..1080 {
+                self.screen.draw_point((x, y));
+            }
+        }
 
         for obj in self.objects.values_mut() {
 
@@ -165,7 +176,7 @@ impl Simulator {
                 let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
                 projected_vertexs[i] = projected_coords;
             }
-            
+
             for i in 0..projected_vertexs.len() {
                 self.screen.draw_point(
                     (projected_vertexs[i].0, projected_vertexs[i].1)
@@ -185,29 +196,30 @@ impl Simulator {
         
         self.screen.refresh();
 
-        if self.restrict_frame_rate {
-            if frame_start_time.elapsed() < self.frame_delay {
-                sleep(self.frame_delay - frame_start_time.elapsed());
-            }
-        }
-
         Ok(delta)
     }
 
-    pub fn restrict_frame_rate(&mut self) {
+    pub fn restrict_frame_rate(&mut self) -> &mut Self {
         self.restrict_frame_rate = true;
+        self
     }
 
-    pub fn release_frame_rate(&mut self) {
+    pub fn release_frame_rate(&mut self) -> &mut Self {
         self.restrict_frame_rate = false;
+        self
     }
 
-    pub fn set_target_frame_rate(&mut self, target: u16) {
-        self.frame_delay = Duration::from_millis(1000 / target as u64);
+    pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
+        println!("{}", target);
+        println!("{}", 1_000_000_000 / target as u64);
+        println!("{:?}", Duration::from_nanos(1_000_000_000 / target as u64));
+        self.frame_delay = Duration::from_nanos(1_000_000_000 / target as u64);
+        self
     }
 
-    pub fn show_fps(&mut self, show: bool) {
+    pub fn show_fps(&mut self, show: bool) -> &mut Self{
         self.screen.show_frame_rate(show);
+        self
     }
 
     pub fn add_object(&mut self, object: Object) -> usize {
@@ -228,7 +240,8 @@ pub struct SimulationBuilder {
     target_frame_rate: u16,
     render_mode: RenderMode,
     width: u32,
-    height: u32
+    height: u32,
+    use_pixel_buffer: bool
 }
 
 impl SimulationBuilder {
@@ -238,7 +251,8 @@ impl SimulationBuilder {
             target_frame_rate: 60,
             render_mode: RenderMode::R2D,
             width: 512,
-            height: 512
+            height: 512,
+            use_pixel_buffer: false
         }
     }
 
@@ -284,18 +298,30 @@ impl SimulationBuilder {
         self
     }
 
+    pub fn use_pixel_buffer(&mut self) -> &mut Self {
+        self.use_pixel_buffer = true;
+        self
+    }
+
+    pub fn use_canvas_drawer(&mut self) -> &mut Self {
+        self.use_pixel_buffer = false;
+        self
+    }
+
     pub fn build(&self) -> Simulator {
-        let screen = Screen::new()
-            .set_size(self.width, self.height)
-            .use_pixel_buffer()
-            .build();
+        let mut screen = Screen::new()
+            .set_size(self.width, self.height);
+        if self.use_pixel_buffer {
+            screen.ref_use_pixel_buffer();
+        }
         Simulator {
             objects: HashMap::new(),
             renderer: Renderer::new(self.render_mode),
             time: Time::new(),
-            screen,
+            screen: screen.ref_build(),
             restrict_frame_rate: self.restrict_frame_rate,
-            frame_delay: Duration::from_millis(1000 / self.target_frame_rate as u64)
+            frame_delay: Duration::from_nanos(1_000_000_000 / self.target_frame_rate as u64),
+            last_frame_start: Instant::now()
         }
     }
 }
