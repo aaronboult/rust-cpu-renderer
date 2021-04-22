@@ -12,8 +12,6 @@ pub use renderer::geometry::{Vector2D, Vector3D};
 pub mod time;
 use time::{Time, Instant, Duration};
 
-use std::thread::sleep;
-
 // used for ID generation
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -152,7 +150,7 @@ impl Simulator {
             return Err(());
         }
 
-        if self.restrict_frame_rate {
+        if self.restrict_frame_rate { // enter loop to maintain framerate if needed
             while self.last_frame_start.elapsed() < self.frame_delay {}
         }
 
@@ -162,38 +160,41 @@ impl Simulator {
 
         self.screen.clear();
 
-        // for x in 0..1920 {
-        //     for y in 0..1080 {
-        //         self.screen.draw_point((x, y));
-        //     }
-        // }
+        self.screen.set_draw_color(screen::Color::GREEN);
+        self.screen.set_bg_color(screen::Color::WHITE);
 
-        for obj in self.objects.values_mut() {
-
-            let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
-
-            for i in 0..obj.verticies.len() {
-                projected_vertexs.push((-1, -1));
-                let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
-                projected_vertexs[i] = projected_coords;
+        for x in 0..1920 {
+            for y in 0..1080 {
+                self.screen.draw_point((x, y));
             }
-
-            for i in 0..projected_vertexs.len() {
-                self.screen.draw_point(
-                    (projected_vertexs[i].0, projected_vertexs[i].1)
-                );
-                for o in obj.verticies[i].connects.iter() {
-                    self.screen.draw_line(
-                        (projected_vertexs[i].0, projected_vertexs[i].1), 
-                        (
-                            projected_vertexs[*o].0,
-                            projected_vertexs[*o].1
-                        )
-                    );
-                }
-            }
-
         }
+
+        // for obj in self.objects.values_mut() {
+
+        //     let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
+
+        //     for i in 0..obj.verticies.len() {
+        //         projected_vertexs.push((-1, -1));
+        //         let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
+        //         projected_vertexs[i] = projected_coords;
+        //     }
+
+        //     for i in 0..projected_vertexs.len() {
+        //         self.screen.draw_point(
+        //             (projected_vertexs[i].0, projected_vertexs[i].1)
+        //         );
+        //         for o in obj.verticies[i].connects.iter() {
+        //             self.screen.draw_line(
+        //                 (projected_vertexs[i].0, projected_vertexs[i].1), 
+        //                 (
+        //                     projected_vertexs[*o].0,
+        //                     projected_vertexs[*o].1
+        //                 )
+        //             );
+        //         }
+        //     }
+
+        // }
         
         self.screen.refresh();
 

@@ -3,7 +3,8 @@
 extern crate sdl2;
 
 mod drawing;
-use drawing::{Drawer, DrawMode, Color};
+use drawing::{Drawer, DrawMode};
+pub use drawing::Color;
 
 pub mod events;
 use events::*;
@@ -169,6 +170,14 @@ impl Screen {
 
     pub fn set_draw_color(&mut self, color: Color) {
         self.draw_handler.set_draw_color(color);
+    }
+
+    pub fn get_bg_color(&self) -> Color {
+        self.draw_handler.get_bg_color()
+    }
+
+    pub fn set_bg_color(&mut self, color: Color) {
+        self.draw_handler.set_bg_color(color);
     }
 
     pub fn draw_point(&mut self, point: (i32, i32)) {

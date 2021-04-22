@@ -141,15 +141,8 @@ impl Sub for Color {
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Pixel {
     color: Color,
-    x: i32,
-    y: i32,
-}
-
-// allow easy conversion from a pixel into a point
-impl Into<Point> for Pixel {
-    fn into(self) -> Point {
-        Point::new(self.x, self.y)
-    }
+    x: usize,
+    y: usize,
 }
 //#endregion
 
@@ -166,7 +159,7 @@ pub struct Drawer {
     width: usize,
     height: usize,
     mode: DrawMode,
-    pixel_contents: Vec<u8>,
+    pixel_contents: Vec<Pixel>,
     canvas_operations: OperationQueue,
 }
 
@@ -184,13 +177,7 @@ impl Drawer {
             mode,
             width: width as usize,
             height: height as usize,
-            pixel_contents: vec![
-                vec![bg_color.r, bg_color.g, bg_color.b, bg_color.a];
-                (width * height) as usize
-            ]
-            .into_iter()
-            .flatten()
-            .collect(), // * 4 for each value in rgba
+            pixel_contents: Vec::new(), // * 4 for each value in rgba
             canvas_operations: OperationQueue::new(),
         }
     }
@@ -233,15 +220,13 @@ impl Drawer {
     pub fn draw_point(&mut self, point: (i32, i32)) {
         match self.mode {
             DrawMode::PIXELBUFFER => {
-                let y = point.1 as usize;
-                let x = point.0 as usize;
-                if x < self.width && y < self.height {
-                    let index = y * (self.width) * 4 + x * 4;
-                    self.pixel_contents[index] = self.draw_color.r;
-                    self.pixel_contents[index + 1] = self.draw_color.g;
-                    self.pixel_contents[index + 2] = self.draw_color.b;
-                    self.pixel_contents[index + 3] = self.draw_color.a;
-                }
+                self.pixel_contents.push(
+                    Pixel {
+                        color: self.draw_color,
+                        x: point.0 as usize,
+                        y: point.1 as usize
+                    }
+                );
             }
             DrawMode::CANVAS => {
                 unimplemented!("Draw point not implemented for canvas");
@@ -305,18 +290,7 @@ impl Drawer {
     pub fn clear(&mut self) {
         self.pixel_contents.clear();
         if self.mode == DrawMode::PIXELBUFFER {
-            self.pixel_contents = vec![
-                vec![
-                    self.bg_color.r,
-                    self.bg_color.g,
-                    self.bg_color.b,
-                    self.bg_color.a
-                ];
-                (self.width * self.height) as usize
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
+            self.pixel_contents = Vec::new();
         }
         self.canvas_operations.clear();
     }
@@ -325,15 +299,34 @@ impl Drawer {
         match self.mode {
             DrawMode::PIXELBUFFER => {
                 let mut surface = canvas.window().surface(event_pump).unwrap();
+                let format = surface.pixel_format_enum();
                 let surface_pixels = surface.without_lock_mut().unwrap();
-                for i in 0..self.pixel_contents.len() {
-                    surface_pixels[i] = self.pixel_contents[i];
+                println!("Draw:");
+                let mut start = std::time::Instant::now();
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        let index = 4 * (y * self.width + x); // color stored in format bgr
+                        surface_pixels[index] = self.bg_color.b;
+                        surface_pixels[index + 1] = self.bg_color.g;
+                        surface_pixels[index + 2] = self.bg_color.r;
+                    }
                 }
+                println!("\tClearing took: {:?}", start.elapsed());
+                // println!("Info:\n\tPixels: {}\n\tWidth: {}\n\tHeight: {}\n\tLen: {}\n\tFormat: {:?}", self.width * self.height, self.width, self.height, self.pixel_contents.len(), format);
+                start = std::time::Instant::now();
+                for pixel in self.pixel_contents.iter() {
+                    if pixel.y < self.height && pixel.x < self.width {
+                        let index = 4 * (pixel.y * self.width + pixel.x); // color stored in format bgr
+                        surface_pixels[index] = pixel.color.b;
+                        surface_pixels[index + 1] = pixel.color.g;
+                        surface_pixels[index + 2] = pixel.color.r;
+                    }
+                }
+                println!("\tDrawing took: {:?}", start.elapsed());
+                self.pixel_contents = Vec::new();
                 surface.update_window().unwrap();
             }
             DrawMode::CANVAS => {
-                canvas.set_draw_color(self.bg_color);
-                canvas.clear();
                 canvas.set_draw_color(self.draw_color);
                 while self.canvas_operations.len() > 0 {
                     let operation = self.canvas_operations.pop();
