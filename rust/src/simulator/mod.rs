@@ -162,17 +162,18 @@ impl Simulator {
 
         self.screen.clear();
 
-        for x in 0..1920 {
-            for y in 0..1080 {
-                self.screen.draw_point((x, y));
-            }
-        }
+        // for x in 0..1920 {
+        //     for y in 0..1080 {
+        //         self.screen.draw_point((x, y));
+        //     }
+        // }
 
         for obj in self.objects.values_mut() {
 
-            let mut projected_vertexs = vec![(-1, -1); 8];
+            let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
             for i in 0..obj.verticies.len() {
+                projected_vertexs.push((-1, -1));
                 let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
                 projected_vertexs[i] = projected_coords;
             }
@@ -210,9 +211,6 @@ impl Simulator {
     }
 
     pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
-        println!("{}", target);
-        println!("{}", 1_000_000_000 / target as u64);
-        println!("{:?}", Duration::from_nanos(1_000_000_000 / target as u64));
         self.frame_delay = Duration::from_nanos(1_000_000_000 / target as u64);
         self
     }

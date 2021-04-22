@@ -66,7 +66,7 @@ impl Screen {
 
             self.frame_count += 1;
 
-            self.draw_handler.draw(&mut self.canvas);
+            self.draw_handler.draw(&mut self.canvas, &self.event_pump);
 
             if self.fps_timer.unwrap().elapsed() >= Screen::SECOND_DURATION && self.show_fps {
                 println!("Frames elapsed: {}", self.frame_count);
@@ -92,9 +92,9 @@ impl Screen {
                 Event::Window { win_event, .. } => {
                     match win_event {
                         WindowEvent::Resized(new_width, new_height) => {
-                            println!("Resize");
                             self.width = new_width as u32;
                             self.height = new_height as u32;
+                            self.draw_handler.set_size(self.width, self.height);
                         },
                         _ => {}
                     }
@@ -292,7 +292,7 @@ impl ScreenBuilder {
             width: self.width,
             height: self.height,
             title: "Simulation Engine",
-            draw_handler: Drawer::new(Color::WHITE, Color::BLACK, self.mode),
+            draw_handler: Drawer::new(Color::WHITE, Color::BLACK, self.mode, self.width, self.height),
             mouse_move_handlers: Vec::new(),
             mouse_input_handlers: Vec::new(),
             mouse_wheel_handlers: Vec::new(),
