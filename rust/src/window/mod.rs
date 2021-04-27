@@ -15,7 +15,6 @@ use std::ptr::{null_mut};
 use self::winapi::um::libloaderapi::GetModuleHandleW;
 use self::winapi::um::winuser::{
     DefWindowProcW,
-    CallWindowProcW,
     RegisterClassW,
     CreateWindowExW,
     IsWindow,
@@ -25,16 +24,10 @@ use self::winapi::um::winuser::{
     TranslateMessage,
     DispatchMessageW,
     PeekMessageW,
-    ShowWindow,
-    CloseWindow,
-    DestroyWindow,
     BeginDeferWindowPos,
     DeferWindowPos,
     EndDeferWindowPos,
     TrackMouseEvent,
-    SetWindowLongPtrW,
-    GetWindowLongPtrW,
-    GetSystemMetrics,
     GetCursorPos,
     GetAsyncKeyState
 };
@@ -48,14 +41,11 @@ use self::winapi::um::winuser::{
     WS_OVERLAPPEDWINDOW,
     WS_VISIBLE,
     PM_REMOVE,
-    GWL_STYLE,
     HOVER_DEFAULT,
     VK_LBUTTON,
 };
 // windows messages
 use self::winapi::um::winuser::{
-    WM_SIZE,
-    WM_PAINT,
     WM_MOUSEMOVE,
     WM_MOUSELEAVE,
     WM_RBUTTONDOWN,
@@ -64,44 +54,17 @@ use self::winapi::um::winuser::{
     WM_LBUTTONUP,
     WM_NCLBUTTONDOWN,
     WM_NCLBUTTONUP,
-    WM_NCLBUTTONDBLCLK,
-    WM_NCRBUTTONDOWN,
-    WM_NCRBUTTONUP,
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
-    SC_CLOSE,
-    SC_MAXIMIZE,
-    SC_MINIMIZE,
-    SC_RESTORE,
-    SC_MOVE,
     SC_SIZE,
-    SW_RESTORE,
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
-    SWP_NOMOVE,
-    SM_CYFULLSCREEN,
-    SM_CXFULLSCREEN,
     TME_LEAVE,
     TME_NONCLIENT,
 };
 // windows nc hit values
 use self::winapi::um::winuser::{
-    HTERROR,
-    HTTRANSPARENT,
-    HTNOWHERE,
-    HTCLIENT,
-    HTCAPTION,
-    HTSYSMENU,
-    HTGROWBOX,
-    HTSIZE,
-    HTMENU,
-    HTHSCROLL,
-    HTVSCROLL,
-    HTMINBUTTON,
-    HTREDUCE,
-    HTMAXBUTTON,
-    HTZOOM,
     HTLEFT,
     HTRIGHT,
     HTTOP,
@@ -110,9 +73,6 @@ use self::winapi::um::winuser::{
     HTBOTTOM,
     HTBOTTOMLEFT,
     HTBOTTOMRIGHT,
-    HTBORDER,
-    HTCLOSE,
-    HTHELP,
     TRACKMOUSEEVENT,
 };
 use self::winapi::um::wingdi::{
@@ -143,18 +103,12 @@ use winapi::shared::minwindef::{
 };
 use self::winapi::shared::basetsd::{
     SIZE_T,
-    LONG_PTR,
 };
 use self::winapi::shared::windef::{
     HWND,
     HDC,
     RECT,
     POINT,
-    LPPOINT,
-};
-use self::winapi::shared::windowsx::{
-    GET_X_LPARAM,
-    GET_Y_LPARAM,
 };
 
 use std::os::raw::c_int;
@@ -525,8 +479,9 @@ impl Window {
                             self.handle_resize();
                         }
                     },
-                    WM_RBUTTONDOWN | WM_RBUTTONUP => {},
-                    WM_LBUTTONDOWN | WM_LBUTTONUP => {},
+
+                    WM_RBUTTONDOWN | WM_RBUTTONUP => {}, // handle events
+                    WM_LBUTTONDOWN | WM_LBUTTONUP => {}, // handle events
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {
