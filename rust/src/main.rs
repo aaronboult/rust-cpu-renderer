@@ -8,7 +8,7 @@ fn main() {
         .set_title("Simulation Engine")
         .build();
     let mut col = 0;
-    const COLRATE: i32 = 1;
+    const COLRATE: i32 = 1000;
     while wind.is_running() {
         wind.fill(
             if col < COLRATE {
