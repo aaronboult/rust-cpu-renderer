@@ -1,49 +1,34 @@
-mod simulator;
-use simulator::Object;
+mod window;
+use window::color::Color;
 
-extern crate rand;
-use rand::prelude::*;
-
-fn main() -> Result<(), ()> {
-
-    let mut rng = rand::thread_rng();
-
-    let mut sim = simulator::SimulationBuilder::new()
-        .use_3d()
-        .set_size(600, 800)
-        .use_pixel_buffer()
+fn main() {
+    let mut wind = window::WindowBuilder::new()
+        .set_width(600)
+        .set_height(600)
+        .set_title("Simulation Engine")
         .build();
-    
-    // sim.restrict_frame_rate().set_target_frame_rate(60);
-
-    sim.show_fps(true);
-
-    let mut cube_ids: Vec<usize> = Vec::new();
-
-    sim.start();
-
-    for _ in 0..1 {
-        cube_ids.push(
-            Object::new_cube()
-                .set_position(
-                    0.0,
-                    0.0,
-                    -20.0
-                )
-                .register(&mut sim)
+    let mut col = 0;
+    const COLRATE: i32 = 1;
+    while wind.is_running() {
+        wind.fill(
+            if col < COLRATE {
+                Color::RED
+            }
+            else if col < 2 * COLRATE {
+                Color::BLUE
+            }
+            else if col < 3 * COLRATE {
+                Color::GREEN
+            }
+            else {
+                if col == 4 * COLRATE{
+                    col = -1;
+                }
+                Color::ORANGE
+            }
         );
+        // wind.fill(Color::GREY);
+        col += 1;
+        wind.update();
     }
-
-    while sim.update().is_ok() {
-        let delta = sim.time.get_delta_time();
-        for id in cube_ids.iter() {
-            let cube = sim.get_object_by_id(*id);
-            cube.transform.rotation.x += rng.gen_range(0.0..60.0) * delta;
-            cube.transform.rotation.y += rng.gen_range(0.0..60.0) * delta;
-            cube.transform.rotation.z += rng.gen_range(0.0..60.0) * delta;
-        }
-    }
-
-    Ok(())
-
 }
