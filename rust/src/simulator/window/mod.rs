@@ -46,7 +46,6 @@ use self::winapi::um::winuser::{
     WS_MAXIMIZEBOX,
     WS_SIZEBOX,
     SW_SHOWMAXIMIZED,
-    SW_MAXIMIZE,
     PM_REMOVE,
     HOVER_DEFAULT,
     VK_LBUTTON,
