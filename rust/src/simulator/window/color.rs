@@ -25,8 +25,8 @@ impl Color {
     const_color!(RED, 0xff, 0, 0);
     const_color!(GREEN, 0, 0xff, 0);
     const_color!(BLUE, 0, 0, 0xff);
-    const_color!(ORANGE, 0, 0, 0xff);
-    const_color!(GREY, 0xff, 0xa5, 0x00);
+    const_color!(ORANGE, 0xff, 0xa5, 0x00);
+    const_color!(GREY, 0x80, 0x80, 0x80);
     const_color!(GRAY, 0x80, 0x80, 0x80);
 
     pub fn rgb(r: u8, g: u8, b: u8) -> Self {

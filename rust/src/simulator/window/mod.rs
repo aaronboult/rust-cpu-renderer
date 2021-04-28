@@ -11,6 +11,8 @@ use std::os::windows::ffi::OsStrExt;
 use std::iter::once;
 use std::mem;
 use std::ptr::{null_mut};
+use std::time::{Instant, Duration};
+use std::cmp::{min, max};
 
 use self::winapi::um::libloaderapi::GetModuleHandleW;
 use self::winapi::um::winuser::{
@@ -126,7 +128,9 @@ pub struct WindowBuilder{
     x: c_int,
     y: c_int,
     width: c_int,
-    height: c_int
+    height: c_int,
+    background_color: Color,
+    show_frame_rate: bool,
 }
 
 //#region WindowBuilder
@@ -138,48 +142,119 @@ impl WindowBuilder {
             y: CW_USEDEFAULT,
             width: CW_USEDEFAULT,
             height: CW_USEDEFAULT,
-            title: win_32_string("New Window")
+            title: win_32_string("New Window"),
+            background_color: Color::WHITE,
+            show_frame_rate: false,
         }
     }
 
-    pub fn set_x(&mut self, x: i32) -> &mut Self {
+    pub fn set_x(mut self, x: i32) -> Self {
+        self.ref_set_x(x);
+        self
+    }
+
+    pub fn ref_set_x(&mut self, x: i32) -> &mut Self {
         self.x = x as c_int;
         self
     }
 
-    pub fn set_y(&mut self, y: i32) -> &mut Self {
+    pub fn set_y(mut self, y: i32) -> Self {
+        self.ref_set_y(y);
+        self
+    }
+
+    pub fn ref_set_y(&mut self, y: i32) -> &mut Self {
         self.y = y as c_int;
         self
     }
 
-    pub fn set_position(&mut self, x: i32, y: i32) -> &mut Self {
-        self.set_x(x);
-        self.set_y(y);
+    pub fn set_position(mut self, x: i32, y: i32) -> Self {
+        self.ref_set_position(x, y);
         self
     }
 
-    pub fn set_width(&mut self, width: i32) -> &mut Self {
+    pub fn ref_set_position(&mut self, x: i32, y: i32) -> &mut Self {
+        self.ref_set_x(x);
+        self.ref_set_y(y);
+        self
+    }
+
+    pub fn set_width(mut self, width: i32) -> Self {
+        self.ref_set_width(width);
+        self
+    }
+
+    pub fn ref_set_width(&mut self, width: i32) -> &mut Self {
         self.width = width as c_int;
         self
     }
 
-    pub fn set_height(&mut self, height: i32) -> &mut Self {
+    pub fn set_height(mut self, height: i32) -> Self {
+        self.ref_set_height(height);
+        self
+    }
+
+    pub fn ref_set_height(&mut self, height: i32) -> &mut Self {
         self.height = height as c_int;
         self
     }
 
-    pub fn set_size(&mut self, width: i32, height: i32) -> &mut Self {
-        self.set_width(width);
-        self.set_height(height);
+    pub fn set_size(mut self, width: i32, height: i32) -> Self {
+        self.ref_set_size(width, height);
         self
     }
 
-    pub fn set_title(&mut self, title: &str) -> &mut Self {
+    pub fn ref_set_size(&mut self, width: i32, height: i32) -> &mut Self {
+        self.ref_set_width(width);
+        self.ref_set_height(height);
+        self
+    }
+
+    pub fn set_title(mut self, title: &str) -> Self {
+        self.ref_set_title(title);
+        self
+    }
+
+    pub fn ref_set_title(&mut self, title: &str) -> &mut Self {
         self.title = win_32_string(title);
         self
     }
 
-    pub fn build(&self) -> Window {
+    pub fn set_background_color(mut self, color: Color) -> Self {
+        self.ref_set_background_color(color);
+        self
+    }
+
+    pub fn ref_set_background_color(&mut self, color: Color) -> &mut Self {
+        self.background_color = color;
+        self
+    }
+
+    pub fn show_frame_rate(mut self) -> Self {
+        self.ref_show_frame_rate();
+        self
+    }
+
+    pub fn ref_show_frame_rate(&mut self) -> &mut Self {
+        self.show_frame_rate = true;
+        self
+    }
+
+    pub fn hide_frame_rate(mut self) -> Self {
+        self.ref_hide_frame_rate();
+        self
+    }
+
+    pub fn ref_hide_frame_rate(&mut self) -> &mut Self {
+        self.show_frame_rate = false;
+        self
+    }
+
+    pub fn build(self) -> Window {
+        self.ref_build()
+    }
+
+    pub fn ref_build(&self) -> Window {
         unsafe {
             // hInstance gets a handle to the instance of the window class
             let hinstance = GetModuleHandleW(null_mut());
@@ -250,8 +325,11 @@ impl WindowBuilder {
                 video_memory_pointer,
                 bitmap_info: generate_bitmap_info(client_width, client_height),
                 minimum_size: (10, Window::get_taskbar_height_from_handle(handle)),
-                background_color: Color::WHITE,
+                background_color: self.background_color,
                 update_state: UpdateState::new(handle),
+                show_frame_rate: self.show_frame_rate,
+                frame_count: 0,
+                frame_start_time: None,
             }
         }
     }
@@ -338,15 +416,14 @@ pub struct Window {
     bitmap_info: BITMAPINFO,
     minimum_size: (i32, i32),
     background_color: Color,
-    update_state: UpdateState
+    update_state: UpdateState,
+    show_frame_rate: bool,
+    frame_count: i32,
+    frame_start_time: Option<Instant>,
 }
 
 #[cfg(windows)]
 impl Window {
-    pub fn is_running(&self) -> bool {
-        unsafe { IsWindow(self.handle) != 0 }
-    }
-
     fn is_resizing(&mut self) -> bool {
         if unsafe{ GetAsyncKeyState(VK_LBUTTON) } as u16 & 0x8000 == 0x8000 && self.update_state.get_sizing_direction() != 0 {
             true
@@ -547,6 +624,23 @@ impl Window {
             self.update_state.enable_draw();
         }
         self.draw_screen();
+        if self.show_frame_rate || self.frame_start_time.is_some() {
+            if self.frame_start_time.is_none() {
+                self.frame_start_time = Some(Instant::now());
+            }
+            const SECONDDURATION: Duration = Duration::from_secs(1);
+            self.frame_count += 1;
+            if self.frame_start_time.unwrap().elapsed() >= SECONDDURATION {
+                println!("Frames elapsed: {}", self.frame_count);
+                self.frame_count = 0;
+                if self.show_frame_rate {
+                    self.frame_start_time = Some(Instant::now());
+                }
+                else {
+                    self.frame_start_time = None;
+                }
+            }
+        }
     }
 
     fn draw_screen(&mut self) {
@@ -578,16 +672,82 @@ impl Window {
         }
     }
 
-    pub fn draw_point(&mut self, index: usize, color: Color) {
+    fn blip(&mut self, index: usize, color: Color) {
         unsafe {
             *((self.video_memory_pointer as *mut u32).add(index)) = color.into();
+        }
+    }
+
+    pub fn draw_point(&mut self, x: i32, y: i32, color: Color) {
+        let (width, height) = self.get_client_size();
+        let x_filtered = if x < 0 {
+            0
+        }
+        else if x >= width {
+            width - 1
+        }
+        else {
+            x
+        };
+        let y_filtered = if y < 0 {
+            0
+        }
+        else if y >= height {
+            height - 1
+        }
+        else {
+            y
+        };
+        let index = y_filtered * width + x_filtered;
+        self.blip(index as usize, color);
+    }
+    
+    pub fn draw_line(&mut self, point_a: (i32, i32), point_b: (i32, i32), color: Color) {
+        let (point_a, point_b) = if point_a.0 > point_b.0 {
+            (point_b, point_a)
+        }
+        else {
+            (point_a, point_b)
+        };
+        // using y=mx+c
+        // as well as the ratio dy:dx
+        let dy = point_b.1 as f32 - point_a.1 as f32;
+        let dx = point_b.0 as f32 - point_a.0 as f32;
+        if dy != 0.0 && dx != 0.0 {
+            let m = dy / dx;
+            let m_round = if m > 0.0 {
+                m.ceil() as i32
+            }
+            else {
+                m.floor() as i32
+            };
+            let c = point_a.1 as f32 - m * point_a.0 as f32;
+            for x in point_a.0..point_b.0 {
+                for y_diff in min(0, m_round)..max(0, m_round) {
+                    let y = m * x as f32 + c;
+                    self.draw_point(x, y_diff + y as i32, color);
+                }
+            }
+        }
+        else if dy == 0.0 { // no change in y
+            let min_x = min(point_a.0, point_b.0);
+            let max_x = max(point_a.0, point_b.0);
+            for x in min_x..max_x {
+                self.draw_point(x, point_a.1, Color::BLACK);
+            }
+        }
+        else { // no change in x
+            let min_y = min(point_a.1, point_b.1);
+            let max_y = max(point_a.1, point_b.1);
+            for y in min_y..max_y {
+                self.draw_point(point_a.0, y, Color::BLACK);
+            }
         }
     }
 
     pub fn fill(&mut self, color: Color) {
         unsafe {
             let (width, height) = self.get_client_size();
-            // println!("Fill size: ({}, {})", width, height);
             let color_u32: u32 = color.into();
             let mut offset: usize = 0;
             for _ in 0..width*height {
@@ -595,7 +755,30 @@ impl Window {
                 offset += 1;
             }
         }
-        // println!("Finishes filling");
+    }
+
+    pub fn show_frame_rate(&mut self) {
+        self.show_frame_rate = true;
+    }
+
+    pub fn hide_frame_rate(&mut self) {
+        self.show_frame_rate = false;
+    }
+
+    pub fn set_frame_rate_display(&mut self, show: bool) {
+        self.show_frame_rate = show;
+    }
+
+    pub fn is_running(&self) -> bool {
+        unsafe { IsWindow(self.handle) != 0 }
+    }
+
+    pub fn get_background_color(&self) -> Color {
+        self.background_color
+    }
+
+    pub fn set_background_color(&mut self, color: Color) {
+        self.background_color = color;
     }
 
     // window area excluding the taskbar
