@@ -11,10 +11,9 @@ fn main() -> Result<(), ()> {
     let window = simulator::WindowBuilder::new()
         .set_size(600, 800)
         .set_background_color(Color::GREY)
-        .set_min_size(800, 100).unwrap()
-        .set_max_size(900, 900).unwrap()
+        .set_min_size(1000, 1000)
+        .set_max_size(900, 900)
         .start_maximized()
-        .disable_maximize()
         .disable_resize()
         .show_frame_rate();
 

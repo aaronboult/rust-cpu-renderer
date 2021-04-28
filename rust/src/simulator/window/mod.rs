@@ -32,7 +32,7 @@ use self::winapi::um::winuser::{
     TrackMouseEvent,
     GetCursorPos,
     GetAsyncKeyState,
-    SystemParametersInfoW,
+    ShowWindow,
 };
 use self::winapi::um::winuser::{
     MSG,
@@ -43,13 +43,13 @@ use self::winapi::um::winuser::{
     CW_USEDEFAULT,
     WS_OVERLAPPEDWINDOW,
     WS_VISIBLE,
-    WS_MAXIMIZE,
     WS_MAXIMIZEBOX,
     WS_SIZEBOX,
+    SW_SHOWMAXIMIZED,
+    SW_MAXIMIZE,
     PM_REMOVE,
     HOVER_DEFAULT,
     VK_LBUTTON,
-    SPI_GETWORKAREA,
 };
 // windows messages
 use self::winapi::um::winuser::{
@@ -287,23 +287,23 @@ impl WindowBuilder {
     }
 
     pub fn ref_set_start_maximized(&mut self, start_maximized: bool) -> &mut Self {
-        self.start_maximized = start_maximized;
+        if self.allow_maximize {
+            self.start_maximized = start_maximized;
+        }
+        else {
+            self.start_maximized = false;
+        }
         self
     }
 
-    pub fn set_min_size(mut self, width: i32, height: i32) -> Result<Self, Self> {
-        if self.ref_set_min_size(width, height).is_ok() {
-            Ok(self)
-        }
-        else {
-            Err(self)
-        }
+    pub fn set_min_size(mut self, width: i32, height: i32) -> Self {
+        self.ref_set_min_size(width, height);
+        self
     }
 
-    pub fn ref_set_min_size(&mut self, width: i32, height: i32) -> Result<&mut Self, &mut Self> {
+    pub fn ref_set_min_size(&mut self, width: i32, height: i32) -> &mut Self {
         if self.max_size > (width, height) {
             self.min_size = (width, height);
-            return Ok(self);
         }
         else if self.max_size.0 == -1 || self.max_size.1 == -1 {
             if self.max_size.0 == -1 || self.max_size.0 > width {
@@ -312,24 +312,18 @@ impl WindowBuilder {
             if self.max_size.1 == -1 || self.max_size.1 > height {
                 self.min_size = (self.min_size.0, height);
             }
-            return Ok(self);
         }
-        Err(self)
+        self
     }
 
-    pub fn set_max_size(mut self, width: i32, height: i32) -> Result<Self, Self> {
-        if self.ref_set_max_size(width, height).is_ok() {
-            Ok(self)
-        }
-        else {
-            Err(self)
-        }
+    pub fn set_max_size(mut self, width: i32, height: i32) -> Self {
+        self.ref_set_max_size(width, height);
+        self
     }
 
-    pub fn ref_set_max_size(&mut self, width: i32, height: i32) -> Result<&mut Self, &mut Self> {
+    pub fn ref_set_max_size(&mut self, width: i32, height: i32) -> &mut Self {
         if self.min_size < (width, height) {
             self.max_size = (width, height);
-            return Ok(self);
         }
         else if self.min_size.0 == -1 || self.min_size.1 == -1 {
             if self.min_size.0 == -1 || self.min_size.0 < width {
@@ -338,9 +332,8 @@ impl WindowBuilder {
             if self.min_size.1 == -1 || self.min_size.1 < height {
                 self.max_size = (self.max_size.0, height);
             }
-            return Ok(self);
         }
-        Err(self)
+        self
     }
 
     pub fn allow_resize(self) -> Self {
@@ -392,6 +385,9 @@ impl WindowBuilder {
 
     pub fn ref_set_allow_maximize(&mut self, allow: bool) -> &mut Self {
         self.allow_maximize = allow;
+        if !self.allow_maximize {
+            self.start_maximized = false;
+        }
         self
     }
 
@@ -431,19 +427,6 @@ impl WindowBuilder {
             }
 
             let mut window_style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
-            
-            if self.start_maximized {
-                window_style |= WS_MAXIMIZE;
-                let mut work_area: RECT = Default::default();
-                SystemParametersInfoW(
-                    SPI_GETWORKAREA,
-                    0,
-                    (&mut work_area) as *mut RECT as *mut VOID,
-                    0
-                );
-                self.width = work_area.right - work_area.left;
-                self.height = work_area.bottom - work_area.top;
-            }
 
             if !self.allow_resize {
                 window_style &= !WS_SIZEBOX;
@@ -451,6 +434,10 @@ impl WindowBuilder {
 
             if !self.allow_maximize {
                 window_style &= !WS_MAXIMIZEBOX;
+            }
+
+            if self.start_maximized {
+                window_style |= WS_MAXIMIZEBOX; 
             }
     
             // create a display window from the registered window class
@@ -472,6 +459,13 @@ impl WindowBuilder {
     
             if handle.is_null() {
                 panic!("{}", Error::last_os_error());
+            }
+
+            if self.start_maximized {
+                let result = ShowWindow(handle, SW_SHOWMAXIMIZED);
+                if result == 0 {
+                    println!("{}", Error::last_os_error());
+                }
             }
 
             let (client_width, client_height) = Window::get_client_size_from_handle(handle);
