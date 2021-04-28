@@ -31,7 +31,8 @@ use self::winapi::um::winuser::{
     EndDeferWindowPos,
     TrackMouseEvent,
     GetCursorPos,
-    GetAsyncKeyState
+    GetAsyncKeyState,
+    SystemParametersInfoW,
 };
 use self::winapi::um::winuser::{
     MSG,
@@ -42,9 +43,13 @@ use self::winapi::um::winuser::{
     CW_USEDEFAULT,
     WS_OVERLAPPEDWINDOW,
     WS_VISIBLE,
+    WS_MAXIMIZE,
+    WS_MAXIMIZEBOX,
+    WS_SIZEBOX,
     PM_REMOVE,
     HOVER_DEFAULT,
     VK_LBUTTON,
+    SPI_GETWORKAREA,
 };
 // windows messages
 use self::winapi::um::winuser::{
@@ -131,6 +136,11 @@ pub struct WindowBuilder{
     height: c_int,
     background_color: Color,
     show_frame_rate: bool,
+    min_size: (i32, i32),
+    max_size: (i32, i32),
+    start_maximized: bool,
+    allow_resize: bool,
+    allow_maximize: bool,
 }
 
 //#region WindowBuilder
@@ -145,6 +155,11 @@ impl WindowBuilder {
             title: win_32_string("New Window"),
             background_color: Color::WHITE,
             show_frame_rate: false,
+            min_size: (-1, -1),
+            max_size: (-1, -1),
+            start_maximized: false,
+            allow_resize: true,
+            allow_maximize: true,
         }
     }
 
@@ -250,11 +265,141 @@ impl WindowBuilder {
         self
     }
 
-    pub fn build(self) -> Window {
+    pub fn start_maximized(self) -> Self {
+        self.set_start_maximized(true)
+    }
+
+    pub fn ref_start_maximixed(&mut self) -> &mut Self {
+        self.ref_set_start_maximized(true)
+    }
+
+    pub fn start_unmaximixed(self) -> Self {
+        self.set_start_maximized(false)
+    }
+    
+    pub fn ref_start_unmaximized(&mut self) -> &mut Self {
+        self.ref_set_start_maximized(false)
+    }
+
+    pub fn set_start_maximized(mut self, start_maximized: bool) -> Self {
+        self.ref_set_start_maximized(start_maximized);
+        self
+    }
+
+    pub fn ref_set_start_maximized(&mut self, start_maximized: bool) -> &mut Self {
+        self.start_maximized = start_maximized;
+        self
+    }
+
+    pub fn set_min_size(mut self, width: i32, height: i32) -> Result<Self, Self> {
+        if self.ref_set_min_size(width, height).is_ok() {
+            Ok(self)
+        }
+        else {
+            Err(self)
+        }
+    }
+
+    pub fn ref_set_min_size(&mut self, width: i32, height: i32) -> Result<&mut Self, &mut Self> {
+        if self.max_size > (width, height) {
+            self.min_size = (width, height);
+            return Ok(self);
+        }
+        else if self.max_size.0 == -1 || self.max_size.1 == -1 {
+            if self.max_size.0 == -1 || self.max_size.0 > width {
+                self.min_size = (width, self.min_size.1);
+            }
+            if self.max_size.1 == -1 || self.max_size.1 > height {
+                self.min_size = (self.min_size.0, height);
+            }
+            return Ok(self);
+        }
+        Err(self)
+    }
+
+    pub fn set_max_size(mut self, width: i32, height: i32) -> Result<Self, Self> {
+        if self.ref_set_max_size(width, height).is_ok() {
+            Ok(self)
+        }
+        else {
+            Err(self)
+        }
+    }
+
+    pub fn ref_set_max_size(&mut self, width: i32, height: i32) -> Result<&mut Self, &mut Self> {
+        if self.min_size < (width, height) {
+            self.max_size = (width, height);
+            return Ok(self);
+        }
+        else if self.min_size.0 == -1 || self.min_size.1 == -1 {
+            if self.min_size.0 == -1 || self.min_size.0 < width {
+                self.max_size = (width, self.max_size.1);
+            }
+            if self.min_size.1 == -1 || self.min_size.1 < height {
+                self.max_size = (self.max_size.0, height);
+            }
+            return Ok(self);
+        }
+        Err(self)
+    }
+
+    pub fn allow_resize(self) -> Self {
+        self.set_allow_resize(true)
+    }
+
+    pub fn ref_allow_resize(&mut self) -> &mut Self {
+        self.ref_set_allow_resize(true)
+    }
+
+    pub fn disable_resize(self) -> Self {
+        self.set_allow_resize(false)
+    }
+
+    pub fn ref_disable_resize(&mut self) -> &mut Self {
+        self.ref_set_allow_resize(false)
+    }
+
+    pub fn set_allow_resize(mut self, allow: bool) -> Self {
+        self.ref_set_allow_resize(allow);
+        self
+    }
+
+    pub fn ref_set_allow_resize(&mut self, allow: bool) -> &mut Self {
+        self.allow_resize = allow;
+        self
+    }
+
+    pub fn allow_maximize(self) -> Self {
+        self.set_allow_maximize(true)
+    }
+
+    pub fn ref_allow_maximize(&mut self) -> &mut Self {
+        self.ref_set_allow_maximize(true)
+    }
+
+    pub fn disable_maximize(self) -> Self {
+        self.set_allow_maximize(false)
+    }
+
+    pub fn ref_disable_maximize(&mut self) -> &mut Self {
+        self.ref_set_allow_maximize(false)
+    }
+
+    pub fn set_allow_maximize(mut self, allow: bool) -> Self {
+        self.ref_set_allow_maximize(allow);
+        self
+    }
+
+    pub fn ref_set_allow_maximize(&mut self, allow: bool) -> &mut Self {
+        self.allow_maximize = allow;
+        self
+    }
+
+    pub fn build(mut self) -> Window {
         self.ref_build()
     }
 
-    pub fn ref_build(&self) -> Window {
+    pub fn ref_build(&mut self) -> Window {
         unsafe {
             // hInstance gets a handle to the instance of the window class
             let hinstance = GetModuleHandleW(null_mut());
@@ -284,6 +429,29 @@ impl WindowBuilder {
             if register_result == 0 {
                 panic!("{}", Error::last_os_error());
             }
+
+            let mut window_style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+            
+            if self.start_maximized {
+                window_style |= WS_MAXIMIZE;
+                let mut work_area: RECT = Default::default();
+                SystemParametersInfoW(
+                    SPI_GETWORKAREA,
+                    0,
+                    (&mut work_area) as *mut RECT as *mut VOID,
+                    0
+                );
+                self.width = work_area.right - work_area.left;
+                self.height = work_area.bottom - work_area.top;
+            }
+
+            if !self.allow_resize {
+                window_style &= !WS_SIZEBOX;
+            }
+
+            if !self.allow_maximize {
+                window_style &= !WS_MAXIMIZEBOX;
+            }
     
             // create a display window from the registered window class
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms632680(v=vs.85).aspx
@@ -291,7 +459,7 @@ impl WindowBuilder {
                 0,
                 class_name.as_ptr(),
                 self.title.as_ptr(),
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                window_style,
                 self.x, // x
                 self.y, // y
                 self.width, // width
@@ -318,13 +486,19 @@ impl WindowBuilder {
             if video_memory_pointer.is_null() {
                 panic!("{}", Error::last_os_error());
             }
+
+            // ensure the minimum size the window can be is the taskbar height
+            if self.min_size.1 < Window::get_taskbar_height_from_handle(handle) {
+                self.min_size = (self.min_size.0, Window::get_taskbar_height_from_handle(handle));
+            }
             
             Window {
                 handle,
                 device_context: GetDC(handle),
                 video_memory_pointer,
                 bitmap_info: generate_bitmap_info(client_width, client_height),
-                minimum_size: (10, Window::get_taskbar_height_from_handle(handle)),
+                minimum_size: self.min_size,
+                maximum_size: self.max_size,
                 background_color: self.background_color,
                 update_state: UpdateState::new(handle),
                 show_frame_rate: self.show_frame_rate,
@@ -332,6 +506,25 @@ impl WindowBuilder {
                 frame_start_time: None,
             }
         }
+    }
+}
+
+impl std::fmt::Debug for WindowBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WindowBuilder")
+            .field("Title", &String::from_utf16(&self.title))
+            .field("X Position", &self.x)
+            .field("Y Position", &self.y)
+            .field("Width", &self.width)
+            .field("Height", &self.height)
+            .field("Background Color", &self.background_color)
+            .field("Min Size", &self.min_size)
+            .field("Max Size", &self.max_size)
+            .field("Show FPS", &self.show_frame_rate)
+            .field("Start Maximized", &self.start_maximized)
+            .field("Allow Maximize", &self.allow_maximize)
+            .field("Allow Resize", &self.allow_resize)
+            .finish()
     }
 }
 //#endregion
@@ -408,6 +601,11 @@ impl UpdateState {
     }
 }
 
+/*
+To Do:
+    - Add maximum size option
+
+*/
 #[cfg(windows)]
 pub struct Window {
     handle: HWND,
@@ -415,6 +613,7 @@ pub struct Window {
     video_memory_pointer: *mut VOID,
     bitmap_info: BITMAPINFO,
     minimum_size: (i32, i32),
+    maximum_size: (i32, i32),
     background_color: Color,
     update_state: UpdateState,
     show_frame_rate: bool,
@@ -482,13 +681,37 @@ impl Window {
         }
     }
 
+    fn clamp_width(&self, width: i32) -> i32 {
+        if width > self.maximum_size.0 && self.maximum_size.0 != -1 {
+            self.maximum_size.0
+        }
+        else if width < self.minimum_size.0 && self.minimum_size.0 != -1 {
+            self.minimum_size.0
+        }
+        else {
+            width
+        }
+    }
+
+    fn clamp_height(&self, height: i32) -> i32 {
+        if height > self.maximum_size.1 && self.maximum_size.1 != -1 {
+            self.maximum_size.1
+        }
+        else if height < self.minimum_size.1 && self.minimum_size.1 != -1 {
+            self.minimum_size.1
+        }
+        else {
+            height
+        }
+    }
+
     fn handle_resize(&mut self) {
         let (cursor_x, cursor_y) = get_cursor_pos();
         // ensure the cursor has moved
         if self.update_state.get_cached_cursor_pos() != (cursor_x, cursor_y) {
             let window_rect = self.get_window_rect();
             let (mut dx, mut dy) = (0, 0);
-            let (mut dwidth, mut dheight) = match self.update_state.get_sizing_direction() {
+            let (dwidth, dheight) = match self.update_state.get_sizing_direction() {
                 HTTOP => (0, window_rect.top - cursor_y), // needs translate
                 HTBOTTOM => (0, cursor_y - window_rect.bottom),
                 HTLEFT => (window_rect.left - cursor_x, 0), // needs translate
@@ -513,17 +736,11 @@ impl Window {
             }
             let (width, height) = self.get_window_size();
             // dx and dy are used to allow resizing using the top and left borders (remove to see the behaviour this prevents)
-            if self.minimum_size.0 >= width + dwidth {
-                dwidth = 0;
-            }
-            if self.minimum_size.1 >= height + dheight {
-                dheight = 0;
-            }
             self.defer_window(
                 window_rect.left - dx,
                 window_rect.top - dy,
-                width + dwidth,
-                height + dheight,
+                self.clamp_width(width + dwidth),
+                self.clamp_height(height + dheight),
                 SWP_DRAWFRAME | SWP_NOOWNERZORDER
             );
             self.update_state.cache_cursor_pos((cursor_x, cursor_y));

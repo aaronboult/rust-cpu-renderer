@@ -10,7 +10,12 @@ fn main() -> Result<(), ()> {
 
     let window = simulator::WindowBuilder::new()
         .set_size(600, 800)
-        .set_background_color(Color::RED)
+        .set_background_color(Color::GREY)
+        .set_min_size(800, 100).unwrap()
+        .set_max_size(900, 900).unwrap()
+        .start_maximized()
+        .disable_maximize()
+        .disable_resize()
         .show_frame_rate();
 
     let mut sim = simulator::SimulationBuilder::new()
@@ -19,11 +24,9 @@ fn main() -> Result<(), ()> {
     
     // sim.restrict_frame_rate().set_target_frame_rate(60);
 
-    sim.show_fps(true);
-
     let mut cube_ids: Vec<usize> = Vec::new();
 
-    for _ in 0..1000 {
+    for _ in 0..1 {
         cube_ids.push(
             Object::new_cube()
                 .set_position(

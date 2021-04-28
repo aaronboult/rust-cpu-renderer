@@ -195,14 +195,17 @@ impl Simulator {
         Ok(delta)
     }
 
-    pub fn restrict_frame_rate(&mut self) -> &mut Self {
-        self.restrict_frame_rate = true;
+    pub fn set_frame_rate_restriction(&mut self, restrict: bool) -> &mut Self {
+        self.restrict_frame_rate = restrict;
         self
     }
 
+    pub fn restrict_frame_rate(&mut self) -> &mut Self {
+        self.set_frame_rate_restriction(true)
+    }
+
     pub fn release_frame_rate(&mut self) -> &mut Self {
-        self.restrict_frame_rate = false;
-        self
+        self.set_frame_rate_restriction(false)
     }
 
     pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
@@ -210,9 +213,17 @@ impl Simulator {
         self
     }
 
-    pub fn show_fps(&mut self, show: bool) -> &mut Self{
+    pub fn set_frame_rate_display(&mut self, show: bool) -> &mut Self {
         self.window.set_frame_rate_display(show);
         self
+    }
+
+    pub fn show_fps(&mut self) -> &mut Self{
+        self.set_frame_rate_display(true)
+    }
+
+    pub fn hide_fps(&mut self) -> &mut Self {
+        self.set_frame_rate_display(false)
     }
 
     pub fn add_object(&mut self, object: Object) -> usize {
