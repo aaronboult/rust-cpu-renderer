@@ -1,15 +1,21 @@
 #![allow(dead_code)]
 
-mod display;
-use display::Screen;
+// mod screen;
+// use screen::Screen;
+
+mod window;
+pub use window::WindowBuilder;
+pub use window::color::Color;
+use window::Window;
 
 use std::collections::HashMap;
 
-pub mod renderer;
-use renderer::{Transform, Renderer};
-pub use renderer::geometry::{Vector2D, Vector3D};
+mod renderer;
+use renderer::{Transform, Renderer, RenderMode};
+pub use renderer::linearalgebra::{Vector2D, Vector3D};
 
 pub mod time;
+use time::{Time, Instant, Duration};
 
 // used for ID generation
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +26,7 @@ static OBJECTID: AtomicUsize = AtomicUsize::new(0);
 pub struct Object {
     pub transform: Transform,
     verticies: Vec<Vertex>,
+    frame_color: Color,
     id: usize
 }
 
@@ -36,7 +43,8 @@ impl Object {
         Self {
             id: Object::new_id(),
             transform: Transform::new(),
-            verticies: Vec::new()
+            verticies: Vec::new(),
+            frame_color: Color::BLACK,
         }
     }
     pub fn new_cube() -> Self {
@@ -76,7 +84,8 @@ impl Object {
                     rel_pos: Vector3D { x: 1.0, y: 1.0, z: 1.0 },
                     connects: vec![5, 6]
                 },
-            ]
+            ],
+            frame_color: Color::BLACK,
         }
     }
 
@@ -131,63 +140,90 @@ impl Vertex {
 pub struct Simulator {
     objects: HashMap<usize, Object>,
     renderer: Renderer,
-    screen: Screen
+    window: Window,
+    pub time: Time,
+    restrict_frame_rate: bool,
+    frame_delay: Duration,
+    last_frame_start: Instant
 }
 
 impl Simulator {
-    pub fn new() -> Self {
-        let screen = Screen::new()
-            .set_size(512, 512)
-            .use_pixel_buffer()
-            .build();
-        Self {
-            objects: HashMap::new(),
-            renderer: Renderer::new(renderer::RenderMode::R3D),
-            screen
-        }
-    }
-
-    pub fn start(&mut self) {
-        self.screen.open();
-    }
-
-    pub fn update(&mut self) -> bool {
-
-        if !self.screen.is_open() {
-            return false;
+    pub fn update(&mut self) -> Result<f32, ()> {
+        if !self.window.is_running() {
+            return Err(());
         }
 
-        self.screen.clear();
+        if self.restrict_frame_rate { // enter loop to maintain framerate if needed
+            std::thread::sleep(self.frame_delay - self.last_frame_start.elapsed());
+        }
+
+        self.last_frame_start = Instant::now();
+
+        let delta = self.time.update();
+        
+        self.window.fill(self.window.get_background_color());
 
         for obj in self.objects.values_mut() {
-
-            let mut projected_vertexs = vec![(-1, -1); 8];
+            let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
             for i in 0..obj.verticies.len() {
-                let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.screen.get_window_size());
+                projected_vertexs.push((-1, -1));
+                let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.window.get_window_size());
                 projected_vertexs[i] = projected_coords;
             }
-            
+
             for i in 0..projected_vertexs.len() {
-                self.screen.draw_point(
-                    (projected_vertexs[i].0, projected_vertexs[i].1)
+                self.window.draw_point(
+                    projected_vertexs[i].0, projected_vertexs[i].1, obj.frame_color
                 );
                 for o in obj.verticies[i].connects.iter() {
-                    self.screen.draw_line(
+                    self.window.draw_line(
                         (projected_vertexs[i].0, projected_vertexs[i].1), 
                         (
                             projected_vertexs[*o].0,
                             projected_vertexs[*o].1
-                        )
+                        ),
+                        obj.frame_color
                     );
                 }
             }
 
         }
         
-        self.screen.refresh();
+        self.window.update();
 
-        true
+        Ok(delta)
+    }
+
+    pub fn set_frame_rate_restriction(&mut self, restrict: bool) -> &mut Self {
+        self.restrict_frame_rate = restrict;
+        self
+    }
+
+    pub fn restrict_frame_rate(&mut self) -> &mut Self {
+        self.set_frame_rate_restriction(true)
+    }
+
+    pub fn release_frame_rate(&mut self) -> &mut Self {
+        self.set_frame_rate_restriction(false)
+    }
+
+    pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.frame_delay = Duration::from_nanos(1_000_000_000 / target as u64);
+        self
+    }
+
+    pub fn set_frame_rate_display(&mut self, show: bool) -> &mut Self {
+        self.window.set_frame_rate_display(show);
+        self
+    }
+
+    pub fn show_fps(&mut self) -> &mut Self{
+        self.set_frame_rate_display(true)
+    }
+
+    pub fn hide_fps(&mut self) -> &mut Self {
+        self.set_frame_rate_display(false)
     }
 
     pub fn add_object(&mut self, object: Object) -> usize {
@@ -198,6 +234,77 @@ impl Simulator {
 
     pub fn get_object_by_id(&mut self, id: usize) -> &mut Object {
         self.objects.get_mut(&id).unwrap()
+    }
+}
+//#endregion
+
+//#region SimulationBuilder
+pub struct SimulationBuilder {
+    restrict_frame_rate: bool,
+    target_frame_rate: u16,
+    render_mode: RenderMode,
+    width: u32,
+    height: u32,
+}
+
+impl SimulationBuilder {
+    pub fn new() -> Self {
+        Self {
+            restrict_frame_rate: false,
+            target_frame_rate: 60,
+            render_mode: RenderMode::R2D,
+            width: 512,
+            height: 512,
+        }
+    }
+
+    pub fn restrict_frame_rate(&mut self) -> &mut Self {
+        self.restrict_frame_rate = true;
+        self
+    }
+
+    pub fn release_frame_rate(&mut self) -> &mut Self {
+        self.restrict_frame_rate = false;
+        self
+    }
+
+    pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.target_frame_rate = target;
+        self
+    }
+
+    pub fn lock_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.restrict_frame_rate = true;
+        self.target_frame_rate = target;
+        self
+    }
+
+    pub fn set_render_mode(&mut self, mode: RenderMode) -> &mut Self {
+        self.render_mode = mode;
+        self
+    }
+
+    pub fn use_3d(&mut self) -> &mut Self {
+        self.render_mode = RenderMode::R3D;
+        self
+    }
+
+    pub fn use_2d(&mut self) -> &mut Self {
+        self.render_mode = RenderMode::R2D;
+        self
+    }
+
+    // consume the windowbuilder used for constructing the window
+    pub fn build(&self, window_builder: WindowBuilder) -> Simulator {
+        Simulator {
+            objects: HashMap::new(),
+            renderer: Renderer::new(self.render_mode),
+            time: Time::new(),
+            window: window_builder.build(),
+            restrict_frame_rate: self.restrict_frame_rate,
+            frame_delay: Duration::from_nanos(1_000_000_000 / self.target_frame_rate as u64),
+            last_frame_start: Instant::now()
+        }
     }
 }
 //#endregion

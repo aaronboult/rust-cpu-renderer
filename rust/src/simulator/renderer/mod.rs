@@ -1,7 +1,8 @@
-pub mod geometry;
-use geometry::{Matrix, Vector2D, Vector3D};
+pub mod linearalgebra;
+use linearalgebra::{Matrix, Vector2D, Vector3D};
 
 #[allow(dead_code)]
+#[derive(Copy, Clone)]
 pub enum RenderMode {
     R2D,
     R3D
@@ -51,7 +52,7 @@ impl Renderer {
         self.resolution_y = resolution_y;
     }
 
-    pub fn project_to_screen(&self, transform: &Transform, vertex: &Vector3D, window_size: (u32, u32)) -> (i32, i32) {
+    pub fn project_to_screen(&self, transform: &Transform, vertex: &Vector3D, window_size: (i32, i32)) -> (i32, i32) {
         match self.mode {
             RenderMode::R2D => {
                 (-1, -1)
@@ -62,7 +63,7 @@ impl Renderer {
         }
     }
 
-    pub fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, window_size: (u32, u32)) -> (i32, i32) {
+    pub fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, window_size: (i32, i32)) -> (i32, i32) {
 
         let point = Vector3D::new(
             vertex.x,

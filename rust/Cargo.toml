@@ -1,25 +1,13 @@
 [package]
 name = "simulation_engine"
 version = "0.1.0"
-build="build.rs"
 authors = ["Aaron Boult <aaronboult25@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies.sdl2]
-version = "0.34"
-default-features = false
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["winuser", "libloaderapi", "memoryapi", "impl-default", "processthreadsapi", "windowsx"] }
 
 [dependencies.rand]
 verion = "0.8.3"
-
-[dev-dependencies]
-criterion = "0.3.4"
-
-[[bench]]
-name = "bench_3d_projection"
-hardness = false
-
-[build-dependencies]
-winres = "0.1.11"

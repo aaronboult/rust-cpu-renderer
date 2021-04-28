@@ -1,47 +1,50 @@
 mod simulator;
-use simulator::Object;
+use simulator::{Object, Color};
 
 extern crate rand;
-use rand::prelude::*;
+use rand::Rng;
 
 fn main() -> Result<(), ()> {
 
     let mut rng = rand::thread_rng();
 
-    const RANGE: std::ops::Range<f32> = -1.0..1.0;
+    let window = simulator::WindowBuilder::new()
+        .set_size(600, 800)
+        .set_background_color(Color::GREY)
+        .set_min_size(1000, 1000)
+        .set_max_size(900, 900)
+        .start_maximized()
+        .disable_resize()
+        .show_frame_rate();
 
-    let mut sim = simulator::Simulator::new();
+    let mut sim = simulator::SimulationBuilder::new()
+        .use_3d()
+        .build(window);
+    
+    // sim.restrict_frame_rate().set_target_frame_rate(60);
 
     let mut cube_ids: Vec<usize> = Vec::new();
 
-    for _ in 0..100 {
+    for _ in 0..1 {
         cube_ids.push(
             Object::new_cube()
                 .set_position(
-                    rng.gen_range(RANGE),
-                    rng.gen_range(RANGE),
-                    rng.gen_range(RANGE) - 20.0
-                )
-                .set_scale(
-                    rng.gen_range(RANGE) * 4.0,
-                    rng.gen_range(RANGE) * 4.0,
-                    rng.gen_range(RANGE) * 4.0
+                    0.0,
+                    0.0,
+                    -20.0
                 )
                 .register(&mut sim)
         );
     }
 
-    sim.start();
-
-    while sim.update() {
+    while sim.update().is_ok() {
+        let delta = sim.time.get_delta_time();
         for id in cube_ids.iter() {
+            let scaler: f32 = rng.gen();
             let cube = sim.get_object_by_id(*id);
-            cube.transform.rotation.x += rng.gen_range(RANGE) * 0.1;
-            cube.transform.rotation.y += rng.gen_range(RANGE) * 0.1;
-            cube.transform.rotation.z += rng.gen_range(RANGE) * 0.1;
-            // cube.transform.position.x += rng.gen_range(RANGE) / 20.0;
-            // cube.transform.position.y += rng.gen_range(RANGE) / 20.0;
-            // cube.transform.position.z += rng.gen_range(RANGE) / 20.0;
+            cube.transform.rotation.x += scaler * 500.0 * delta;
+            cube.transform.rotation.y += scaler * 500.0 * delta;
+            cube.transform.rotation.z += scaler * 500.0 * delta;
         }
     }
 
