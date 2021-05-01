@@ -1,2 +1,3 @@
 *.code-workspace
 rust/target
+*.todo

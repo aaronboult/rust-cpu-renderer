@@ -1,5 +1,6 @@
 mod simulator;
-use simulator::{Object, Color};
+use simulator::Color;
+use simulator::objects::{Object, Cube};
 
 extern crate rand;
 use rand::Rng;
@@ -11,15 +12,15 @@ fn main() -> Result<(), ()> {
     let window = simulator::WindowBuilder::new()
         .set_size(600, 800)
         .set_background_color(Color::GREY)
-        .set_min_size(1000, 1000)
-        .set_max_size(900, 900)
-        .start_maximized()
-        .disable_resize()
+        .set_title("Test title")
         .show_frame_rate();
 
     let mut sim = simulator::SimulationBuilder::new()
         .use_3d()
+        .use_object_clearing()
         .build(window);
+    
+    sim.paint_background();
     
     // sim.restrict_frame_rate().set_target_frame_rate(60);
 
@@ -27,7 +28,7 @@ fn main() -> Result<(), ()> {
 
     for _ in 0..1 {
         cube_ids.push(
-            Object::new_cube()
+            Cube::new()
                 .set_position(
                     0.0,
                     0.0,
@@ -42,9 +43,9 @@ fn main() -> Result<(), ()> {
         for id in cube_ids.iter() {
             let scaler: f32 = rng.gen();
             let cube = sim.get_object_by_id(*id);
-            cube.transform.rotation.x += scaler * 500.0 * delta;
-            cube.transform.rotation.y += scaler * 500.0 * delta;
-            cube.transform.rotation.z += scaler * 500.0 * delta;
+            cube.transform_mut().rotation.x += scaler * 200.0 * delta;
+            cube.transform_mut().rotation.y += scaler * 200.0 * delta;
+            cube.transform_mut().rotation.z += scaler * 200.0 * delta;
         }
     }
 
