@@ -482,9 +482,9 @@ impl WindowBuilder {
 
             // ensure the minimum size the window can be is the taskbar height
             if self.min_size.1 < Window::get_taskbar_height_from_handle(handle) {
-                self.min_size = (self.min_size.0, Window::get_taskbar_height_from_handle(handle));
+                self.min_size = (self.min_size.0, Window::get_taskbar_height_from_handle(handle) + 1);
             }
-            
+
             Window {
                 handle,
                 device_context: GetDC(handle),
@@ -502,6 +502,7 @@ impl WindowBuilder {
     }
 }
 
+#[cfg(windows)]
 impl std::fmt::Debug for WindowBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
@@ -522,6 +523,7 @@ impl std::fmt::Debug for WindowBuilder {
 }
 //#endregion
 
+#[cfg(windows)]
 struct UpdateState {
     nc_tracker: TRACKMOUSEEVENT,
     w_tracker: TRACKMOUSEEVENT,
@@ -530,6 +532,7 @@ struct UpdateState {
     cancel_draw: bool,
 }
 
+#[cfg(windows)]
 impl UpdateState {
     fn new(handle: HWND) -> Self {
         Self {
