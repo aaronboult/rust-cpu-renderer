@@ -11,135 +11,20 @@ use window::Window;
 use std::collections::HashMap;
 
 mod renderer;
-use renderer::{Transform, Renderer, RenderMode};
+use renderer::{Renderer, RenderMode};
 pub use renderer::linearalgebra::{Vector2D, Vector3D};
+
+pub mod objects;
+use objects::Object;
 
 pub mod time;
 use time::{Time, Instant, Duration};
 
-// used for ID generation
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static OBJECTID: AtomicUsize = AtomicUsize::new(0);
-
-//#region Object and Vertex
-pub struct Object {
-    pub transform: Transform,
-    verticies: Vec<Vertex>,
-    frame_color: Color,
-    id: usize
-}
-
-impl Object {
-    fn new_id() -> usize {
-        let id = OBJECTID.fetch_add(1, Ordering::SeqCst);
-        if id == usize::MAX {
-            OBJECTID.store(0, Ordering::SeqCst);
-        }
-        id
-    }
-
-    pub fn new() -> Self {
-        Self {
-            id: Object::new_id(),
-            transform: Transform::new(),
-            verticies: Vec::new(),
-            frame_color: Color::BLACK,
-        }
-    }
-    pub fn new_cube() -> Self {
-        Self {
-            id: Object::new_id(),
-            transform: Transform::new(),
-            verticies: vec![
-                Vertex { // ltb
-                    rel_pos: Vector3D { x: -1.0, y: -1.0, z: -1.0 },
-                    connects: vec![1, 2, 4]
-                },
-                Vertex { // rtb
-                    rel_pos: Vector3D { x: 1.0, y: -1.0, z: -1.0 },
-                    connects: vec![0, 3, 5]
-                },
-                Vertex { // ltf
-                    rel_pos: Vector3D { x: -1.0, y: -1.0, z: 1.0 },
-                    connects: vec![0, 3, 6]
-                },
-                Vertex { // rtf
-                    rel_pos: Vector3D { x: 1.0, y: -1.0, z: 1.0 },
-                    connects: vec![1, 2, 7]
-                },
-                Vertex { // lbb
-                    rel_pos: Vector3D { x: -1.0, y: 1.0, z: -1.0 },
-                    connects: vec![5, 6]
-                },
-                Vertex { // rbb
-                    rel_pos: Vector3D { x: 1.0, y: 1.0, z: -1.0 },
-                    connects: vec![4, 7]
-                },
-                Vertex { // lbf
-                    rel_pos: Vector3D { x: -1.0, y: 1.0, z: 1.0 },
-                    connects: vec![4, 7]
-                },
-                Vertex { // rbf
-                    rel_pos: Vector3D { x: 1.0, y: 1.0, z: 1.0 },
-                    connects: vec![5, 6]
-                },
-            ],
-            frame_color: Color::BLACK,
-        }
-    }
-
-    pub fn register(self, registrar: &mut Simulator) -> usize {
-        let id = self.id;
-        registrar.add_object(self);
-        id
-    }
-
-    pub fn set_position(mut self, x: f32, y: f32, z: f32) -> Self{
-        self.transform.set_position(x, y, z);
-        self
-    }
-
-    pub fn set_rotation(mut self, x: f32, y: f32, z: f32) -> Self {
-        self.transform.set_rotation(x, y, z);
-        self
-    }
-
-    pub fn set_scale(mut self, x: f32, y: f32, z: f32) -> Self {
-        self.transform.set_scale(x, y, z);
-        self
-    }
-}
-
-pub struct Vertex {
-    rel_pos: Vector3D,
-    connects: Vec<usize>
-}
-
-impl Vertex {
-    pub fn new(rel_pos: Vector3D) -> Self {
-        Self {
-            rel_pos,
-            connects: Vec::new()
-        }
-    }
-    pub fn add_connection(&mut self, index: usize) -> &mut Self {
-        self.connects.push(index);
-        self
-    }
-    pub fn add_connections(&mut self, indexs: Vec<usize>) -> &mut Self {
-        for index in indexs {
-            self.add_connection(index);
-        }
-        self
-    }
-}
-//#endregion
-
 //#region Simulator
 pub struct Simulator {
-    objects: HashMap<usize, Object>,
+    objects: HashMap<usize, Box<dyn Object>>,
     renderer: Renderer,
+    use_object_clearing: bool,
     window: Window,
     pub time: Time,
     restrict_frame_rate: bool,
@@ -160,30 +45,35 @@ impl Simulator {
         self.last_frame_start = Instant::now();
 
         let delta = self.time.update();
-        
-        self.window.fill(self.window.get_background_color());
+
+        if !self.use_object_clearing {
+            self.paint_background();
+        }
 
         for obj in self.objects.values_mut() {
             let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
-            for i in 0..obj.verticies.len() {
+            let verticies = obj.get_verticies();
+            let frame_color = obj.get_frame_color();
+
+            for i in 0..verticies.len() {
                 projected_vertexs.push((-1, -1));
-                let projected_coords = self.renderer.project_to_screen(&obj.transform, &obj.verticies[i].rel_pos, self.window.get_window_size());
+                let projected_coords = self.renderer.project_to_screen(&obj.transform(), &verticies[i].get_rel_pos(), self.window.get_window_size());
                 projected_vertexs[i] = projected_coords;
             }
 
             for i in 0..projected_vertexs.len() {
                 self.window.draw_point(
-                    projected_vertexs[i].0, projected_vertexs[i].1, obj.frame_color
+                    projected_vertexs[i].0, projected_vertexs[i].1, frame_color
                 );
-                for o in obj.verticies[i].connects.iter() {
+                for o in verticies[i].get_connections().iter() {
                     self.window.draw_line(
                         (projected_vertexs[i].0, projected_vertexs[i].1), 
                         (
                             projected_vertexs[*o].0,
                             projected_vertexs[*o].1
                         ),
-                        obj.frame_color
+                        frame_color
                     );
                 }
             }
@@ -193,6 +83,10 @@ impl Simulator {
         self.window.update();
 
         Ok(delta)
+    }
+
+    pub fn paint_background(&mut self) {
+        self.window.fill(self.window.get_background_color());
     }
 
     pub fn set_frame_rate_restriction(&mut self, restrict: bool) -> &mut Self {
@@ -226,13 +120,13 @@ impl Simulator {
         self.set_frame_rate_display(false)
     }
 
-    pub fn add_object(&mut self, object: Object) -> usize {
-        let id = object.id;
+    pub fn add_object(&mut self, object: Box<dyn Object>) -> usize {
+        let id = object.get_id();
         self.objects.insert(id, object);
         id
     }
 
-    pub fn get_object_by_id(&mut self, id: usize) -> &mut Object {
+    pub fn get_object_by_id(&mut self, id: usize) -> &mut Box<dyn Object> {
         self.objects.get_mut(&id).unwrap()
     }
 }
@@ -241,6 +135,7 @@ impl Simulator {
 //#region SimulationBuilder
 pub struct SimulationBuilder {
     restrict_frame_rate: bool,
+    use_object_clearing: bool,
     target_frame_rate: u16,
     render_mode: RenderMode,
     width: u32,
@@ -251,6 +146,7 @@ impl SimulationBuilder {
     pub fn new() -> Self {
         Self {
             restrict_frame_rate: false,
+            use_object_clearing: false,
             target_frame_rate: 60,
             render_mode: RenderMode::R2D,
             width: 512,
@@ -294,11 +190,22 @@ impl SimulationBuilder {
         self
     }
 
+    pub fn use_object_clearing(&mut self) -> &mut Self {
+        self.use_object_clearing = true;
+        self
+    }
+
+    pub fn use_background_fill(&mut self) -> &mut Self {
+        self.use_object_clearing = false;
+        self
+    }
+
     // consume the windowbuilder used for constructing the window
     pub fn build(&self, window_builder: WindowBuilder) -> Simulator {
         Simulator {
             objects: HashMap::new(),
             renderer: Renderer::new(self.render_mode),
+            use_object_clearing: self.use_object_clearing,
             time: Time::new(),
             window: window_builder.build(),
             restrict_frame_rate: self.restrict_frame_rate,
