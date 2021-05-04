@@ -121,7 +121,7 @@ impl Renderer {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct Transform {
     pub position: Vector3D,
     pub rotation: Vector3D,
@@ -153,5 +153,15 @@ impl Transform {
         self.scale.x = x;
         self.scale.y = y;
         self.scale.z = z;
+    }
+}
+
+impl std::fmt::Debug for Transform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WindowBuilder")
+            .field("Position", &format!("{}", self.position))
+            .field("Rotation", &format!("{}", self.rotation))
+            .field("Scale", &format!("{}", self.scale))
+            .finish()
     }
 }
