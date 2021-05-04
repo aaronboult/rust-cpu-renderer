@@ -946,14 +946,14 @@ impl Window {
             let min_x = min(point_a.0, point_b.0);
             let max_x = max(point_a.0, point_b.0);
             for x in min_x..max_x {
-                self.draw_point(x, point_a.1, Color::BLACK);
+                self.draw_point(x, point_a.1, color);
             }
         }
         else { // no change in x
             let min_y = min(point_a.1, point_b.1);
             let max_y = max(point_a.1, point_b.1);
             for y in min_y..max_y {
-                self.draw_point(point_a.0, y, Color::BLACK);
+                self.draw_point(point_a.0, y, color);
             }
         }
     }
