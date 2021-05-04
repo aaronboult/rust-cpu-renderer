@@ -47,37 +47,14 @@ impl Simulator {
         let delta = self.time.update();
 
         if !self.use_object_clearing {
-            self.paint_background();
+            self.clear_screen();
         }
 
         for obj in self.objects.values_mut() {
-            let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
-
-            let verticies = obj.get_verticies();
-            let frame_color = obj.get_frame_color();
-
-            for i in 0..verticies.len() {
-                projected_vertexs.push((-1, -1));
-                let projected_coords = self.renderer.project_to_screen(&obj.transform(), &verticies[i].get_rel_pos(), self.window.get_window_size());
-                projected_vertexs[i] = projected_coords;
+            Simulator::paint_object(obj, &self.renderer, &mut self.window, false);
+            if self.use_object_clearing {
+                obj.cache_transform();
             }
-
-            for i in 0..projected_vertexs.len() {
-                self.window.draw_point(
-                    projected_vertexs[i].0, projected_vertexs[i].1, frame_color
-                );
-                for o in verticies[i].get_connections().iter() {
-                    self.window.draw_line(
-                        (projected_vertexs[i].0, projected_vertexs[i].1), 
-                        (
-                            projected_vertexs[*o].0,
-                            projected_vertexs[*o].1
-                        ),
-                        frame_color
-                    );
-                }
-            }
-
         }
         
         self.window.update();
@@ -126,8 +103,66 @@ impl Simulator {
         id
     }
 
-    pub fn get_object_by_id(&mut self, id: usize) -> &mut Box<dyn Object> {
-        self.objects.get_mut(&id).unwrap()
+    pub fn remove_object(&mut self, object_id: &usize) -> Option<Box<dyn Object>> {
+        self.objects.remove(object_id)
+    }
+
+    pub fn get_object_by_id(&mut self, id: &usize) -> Option<&mut Box<dyn Object>> {
+        self.objects.get_mut(id)
+    }
+
+    // clears the currently rendered pixels from the screen ready to draw new ones
+    pub fn clear_from_screen(&mut self, object_id: &usize) {
+        let renderer = &self.renderer;
+        let window = &mut self.window;
+        let background_color = window.get_background_color();
+        let object = self.objects.get_mut(&object_id).unwrap();
+        let current_frame_color = object.get_frame_color();
+        let current_fill_color = object.get_fill_color();
+        object.set_frame_color(background_color);
+        object.set_fill_color(background_color);
+        Simulator::paint_object(object, renderer, window, true);
+        object.set_frame_color(current_frame_color);
+        object.set_fill_color(current_fill_color);
+    }
+
+    pub fn clear_screen(&mut self) {
+        self.paint_background();
+    }
+
+    fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, use_cached_transform: bool) {
+        let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
+
+        let verticies = obj.get_verticies();
+        let frame_color = obj.get_frame_color();
+
+        let object_transform = if use_cached_transform {
+            obj.get_cached_transform()
+        }
+        else {
+            obj.transform()
+        };
+
+        for i in 0..verticies.len() {
+            projected_vertexs.push((-1, -1));
+            projected_vertexs[i] = renderer.project_to_screen(object_transform, &verticies[i].get_rel_pos(), window.get_window_size());
+        }
+
+        for i in 0..projected_vertexs.len() {
+            window.draw_point(
+                projected_vertexs[i].0, projected_vertexs[i].1, frame_color
+            );
+            for o in verticies[i].get_connections().iter() {
+                window.draw_line(
+                    (projected_vertexs[i].0, projected_vertexs[i].1), 
+                    (
+                        projected_vertexs[*o].0,
+                        projected_vertexs[*o].1
+                    ),
+                    frame_color
+                );
+            }
+        }
     }
 }
 //#endregion

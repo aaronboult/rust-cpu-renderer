@@ -21,12 +21,10 @@ fn main() -> Result<(), ()> {
         .build(window);
     
     sim.paint_background();
-    
-    // sim.restrict_frame_rate().set_target_frame_rate(60);
 
     let mut cube_ids: Vec<usize> = Vec::new();
 
-    for _ in 0..1 {
+    for _ in 0..1000 {
         cube_ids.push(
             Cube::new()
                 .set_position(
@@ -37,18 +35,16 @@ fn main() -> Result<(), ()> {
                 .register(&mut sim)
         );
     }
-
     while sim.update().is_ok() {
         let delta = sim.time.get_delta_time();
         for id in cube_ids.iter() {
             let scaler: f32 = rng.gen();
-            let cube = sim.get_object_by_id(*id);
-            cube.transform_mut().rotation.x += scaler * 200.0 * delta;
-            cube.transform_mut().rotation.y += scaler * 200.0 * delta;
-            cube.transform_mut().rotation.z += scaler * 200.0 * delta;
+            sim.clear_from_screen(id);
+            let cube = sim.get_object_by_id(id).unwrap();
+            // cube.transform_mut().rotation.x += scaler * 200.0 * delta;
+            cube.transform_mut().rotation.y += scaler * 500.0 * delta;
+            // cube.transform_mut().rotation.z += scaler * 200.0 * delta;
         }
     }
-
     Ok(())
-
 }

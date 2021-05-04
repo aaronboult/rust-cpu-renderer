@@ -1,5 +1,5 @@
 use super::renderer::{Transform};
-use super::renderer::linearalgebra::{Vector3D, Vector2D};
+use super::renderer::linearalgebra::{Vector3D};
 use super::{Simulator, Color};
 
 // used for ID generation
@@ -18,6 +18,8 @@ pub trait Object {
     fn set_frame_color(&mut self, color: Color);
     fn get_fill_color(&self) -> Color;
     fn set_fill_color(&mut self, color: Color);
+    fn get_cached_transform(&self) -> &Transform;
+    fn cache_transform(&mut self);
 }
 
 impl dyn Object {
@@ -31,11 +33,12 @@ impl dyn Object {
 }
 
 pub struct Cube {
-    pub transform: Transform,
+    transform: Transform,
+    cached_transform: Transform,
     verticies: Vec<Vertex>,
     frame_color: Color,
     fill_color: Color,
-    id: usize
+    id: usize,
 }
 
 impl Object for Cube {
@@ -66,6 +69,12 @@ impl Object for Cube {
     fn register(self, registrar: &mut Simulator) -> usize {
         registrar.add_object(Box::new(self))
     }
+    fn get_cached_transform(&self) -> &Transform {
+        &self.cached_transform
+    }
+    fn cache_transform(&mut self) {
+        self.cached_transform = self.transform;
+    }
 }
 
 impl Cube {
@@ -73,6 +82,7 @@ impl Cube {
         Self {
             id: Object::new_id(),
             transform: Transform::new(),
+            cached_transform: Transform::new(),
             verticies: vec![
                 Vertex { // ltb
                     rel_pos: Vector3D { x: -1.0, y: -1.0, z: -1.0 },
@@ -140,7 +150,7 @@ impl Vertex {
             connects: Vec::new()
         }
     }
-    
+
     pub fn get_rel_pos(&self) -> Vector3D {
         self.rel_pos
     }
