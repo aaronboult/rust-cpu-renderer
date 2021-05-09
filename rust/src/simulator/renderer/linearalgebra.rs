@@ -252,7 +252,7 @@ impl From<Vector2D> for Matrix {
 //#region Vector3D
 // vector3d is a special case of a matrix
 // where the width is 1 and the height is 3
-#[derive(Copy, Clone, PartialEq, Default)]
+#[derive(Copy, Clone, PartialEq, Default, Debug)]
 pub struct Vector3D {
     pub x: f32,
     pub y: f32,
@@ -383,7 +383,7 @@ impl From<Vector2D> for Vector3D {
 //#region Vector2D
 // vector2d is a special case of a matrix
 // where the width is 1 and the height is 2
-#[derive(Copy, Clone, PartialEq, Default)]
+#[derive(Copy, Clone, PartialEq, Default, Debug)]
 pub struct Vector2D {
     pub x: f32,
     pub y: f32
