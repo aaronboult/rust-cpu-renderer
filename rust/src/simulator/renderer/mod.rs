@@ -1,8 +1,21 @@
 pub mod linearalgebra;
 use linearalgebra::{Matrix, Vector2D, Vector3D};
 
+#[derive(Copy, Clone, Debug)]
+pub enum OriginPosition {
+    TOPLEFT,
+    TOPRIGHT,
+    BOTTOMLEFT,
+    BOTTOMRIGHT,
+    TOPMIDDLE,
+    BOTTOMMIDDLE,
+    MIDDLELEFT,
+    MIDDLERIGHT,
+    MIDDLEMIDDLE
+}
+
 #[allow(dead_code)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum RenderMode {
     R2D,
     R3D
@@ -30,16 +43,18 @@ pub struct Renderer {
     mode: RenderMode,
     camera: Camera,
     resolution_x: f32,
-    resolution_y: f32
+    resolution_y: f32,
+    origin: OriginPosition
 }
 
 impl Renderer {
-    pub fn new(mode: RenderMode) -> Self {
+    pub fn new(mode: RenderMode, origin: OriginPosition) -> Self {
         Self {
             mode,
             camera: Camera::new(),
             resolution_x: 1920.0,
-            resolution_y: 1080.0
+            resolution_y: 1080.0,
+            origin
         }
     }
 
@@ -52,18 +67,38 @@ impl Renderer {
         self.resolution_y = resolution_y;
     }
 
+    fn get_origin(&self, window_size: (i32, i32)) -> (i32, i32) {
+        match self.origin {
+            OriginPosition::TOPLEFT => (0, 0),
+            OriginPosition::TOPRIGHT => (window_size.0, 0),
+            OriginPosition::BOTTOMLEFT => (0, window_size.1),
+            OriginPosition::BOTTOMRIGHT => window_size,
+            OriginPosition::TOPMIDDLE => (window_size.0 / 2, 0),
+            OriginPosition::BOTTOMMIDDLE => (window_size.0 / 2, window_size.1),
+            OriginPosition::MIDDLELEFT => (0, window_size.1 / 2),
+            OriginPosition::MIDDLERIGHT => (window_size.0, window_size.1 / 2),
+            OriginPosition::MIDDLEMIDDLE => (window_size.0 / 2, window_size.1 / 2),
+        }
+    }
+
     pub fn project_to_screen(&self, transform: &Transform, vertex: &Vector3D, window_size: (i32, i32)) -> (i32, i32) {
         match self.mode {
             RenderMode::R2D => {
-                (-1, -1)
+                let (x_origin, y_origin) = self.get_origin(window_size);
+                (
+                    transform.position.x as i32 + x_origin,
+                    transform.position.y as i32 + y_origin
+                )
             },
             RenderMode::R3D => {
-                self.calculate_3d_projection(transform, vertex, window_size)
+                self.calculate_3d_projection(transform, vertex, self.get_origin(window_size))
             }
         }
     }
 
-    pub fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, window_size: (i32, i32)) -> (i32, i32) {
+    pub fn calculate_3d_projection(&self, transform: &Transform, vertex: &Vector3D, origin_pos: (i32, i32)) -> (i32, i32) {
+        #[cfg(feature="renderer_profile")]
+        let projection_calculation_timer = Instant::now();
 
         let point = Vector3D::new(
             vertex.x,
@@ -113,9 +148,12 @@ impl Renderer {
             y = (rotated_projection.y * self.resolution_y) / (rotated_projection.z / recording_screen_size.y) * self.camera.view_plane_z;
         }
 
+        #[cfg(feature="renderer_profile")]
+        println!("Projection Calculation Time: {}ms", projection_calculation_timer.elapsed().as_millis());
+
         (
-            x as i32 + (window_size.0 / 2) as i32,
-            y as i32 + (window_size.1 / 2) as i32,
+            x as i32 + origin_pos.0,
+            y as i32 + origin_pos.1,
         )
     
     }
@@ -153,6 +191,78 @@ impl Transform {
         self.scale.x = x;
         self.scale.y = y;
         self.scale.z = z;
+    }
+
+    pub fn translate(&mut self, x: f32, y: f32, z: f32) {
+        self.translate_x(x);
+        self.translate_y(y);
+        self.translate_z(z);
+    }
+
+    pub fn translate_x(&mut self, x: f32) {
+        self.position.x += x;
+    }
+
+    pub fn translate_y(&mut self, y: f32) {
+        self.position.y += y;
+    }
+
+    pub fn translate_z(&mut self, z: f32) {
+        self.position.z += z;
+    }
+
+    pub fn rotate(&mut self, x: f32, y: f32, z: f32) {
+        self.rotate_x(x);
+        self.rotate_y(y);
+        self.rotate_z(z);
+    }
+
+    pub fn rotate_x(&mut self, x: f32) {
+        self.rotation.x += x;
+        if self.rotation.x < 0.0 {
+            self.rotation.x += 360.0;
+        }
+        else if self.rotation.x > 360.0 {
+            self.rotation.x -= 360.0;
+        }
+    }
+
+    pub fn rotate_y(&mut self, y: f32) {
+        self.rotation.y += y;
+        if self.rotation.y < 0.0 {
+            self.rotation.y += 360.0;
+        }
+        else if self.rotation.y > 360.0 {
+            self.rotation.y -= 360.0;
+        }
+    }
+
+    pub fn rotate_z(&mut self, z: f32) {
+        self.rotation.z += z;
+        if self.rotation.z < 0.0 {
+            self.rotation.z += 360.0;
+        }
+        else if self.rotation.z > 360.0 {
+            self.rotation.z -= 360.0;
+        }
+    }
+
+    pub fn scale(&mut self, x: f32, y: f32, z: f32) {
+        self.scale_x(x);
+        self.scale_y(y);
+        self.scale_z(z);
+    }
+
+    pub fn scale_x(&mut self, x: f32) {
+        self.scale.x += x;
+    }
+
+    pub fn scale_y(&mut self, y: f32) {
+        self.scale.y += y;
+    }
+
+    pub fn scale_z(&mut self, z: f32) {
+        self.scale.z += z;
     }
 }
 
