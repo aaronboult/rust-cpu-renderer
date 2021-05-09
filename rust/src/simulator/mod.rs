@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 mod renderer;
 use renderer::{Renderer, RenderMode};
+pub use renderer::OriginPosition;
 pub use renderer::linearalgebra::{Vector2D, Vector3D};
 
 pub mod objects;
@@ -46,8 +47,19 @@ impl Simulator {
 
         let delta = self.time.update();
 
+        #[cfg(feature="simulator_profile")]
+        let mut profile_timer = Instant::now();
+
         if !self.use_object_clearing {
             self.clear_screen();
+
+            #[cfg(feature="simulator_profile")]
+            println!("Frame:\n\tScreen Clear Time: {}ms", profile_timer.elapsed().as_millis());
+        }
+
+        #[cfg(feature="simulator_profile")]
+        {
+            profile_timer = Instant::now();
         }
 
         for obj in self.objects.values_mut() {
@@ -56,14 +68,88 @@ impl Simulator {
                 obj.cache_transform();
             }
         }
+
+        #[cfg(feature="simulator_profile")]
+        println!("\tObject Render Time: {}ms", profile_timer.elapsed().as_millis());
+
+        #[cfg(feature="simulator_profile")]
+        {
+            profile_timer = Instant::now();
+        }
         
         self.window.update();
+
+        #[cfg(feature="simulator_profile")]
+        {
+            println!("\tWindow Update Time: {}ms", profile_timer.elapsed().as_millis());
+            println!("\tFrame time: {}ms\nEnd Frame", self.last_frame_start.elapsed().as_millis());
+        }
 
         Ok(delta)
     }
 
     pub fn paint_background(&mut self) {
         self.window.fill(self.window.get_background_color());
+    }
+
+    // clears the currently rendered pixels from the screen ready to draw new ones
+    pub fn clear_from_screen(&mut self, object_id: &usize) {
+        #[cfg(feature="simulator_profile")]
+        let clear_timer = Instant::now();
+
+        let renderer = &self.renderer;
+        let window = &mut self.window;
+        let background_color = window.get_background_color();
+        let object = self.objects.get_mut(&object_id).unwrap();
+        let current_frame_color = object.get_frame_color();
+        let current_fill_color = object.get_fill_color();
+        object.set_frame_color(background_color);
+        object.set_fill_color(background_color);
+        Simulator::paint_object(object, renderer, window, true);
+        object.set_frame_color(current_frame_color);
+        object.set_fill_color(current_fill_color);
+
+        #[cfg(feature="simulator_profile")]
+        println!("\tClear Time: {}ms", clear_timer.elapsed().as_millis());
+    }
+
+    pub fn clear_screen(&mut self) {
+        self.paint_background();
+    }
+
+    fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, use_cached_transform: bool) {
+        let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
+
+        let verticies = obj.get_verticies();
+        let frame_color = obj.get_frame_color();
+
+        let object_transform = if use_cached_transform {
+            obj.get_cached_transform()
+        }
+        else {
+            obj.transform()
+        };
+
+        for i in 0..verticies.len() {
+            projected_vertexs.push((-1, -1));
+            projected_vertexs[i] = renderer.project_to_screen(object_transform, &verticies[i].get_rel_pos(), window.get_client_size());
+        }
+
+        for i in 0..projected_vertexs.len() {
+            window.draw_point(
+                projected_vertexs[i].0, projected_vertexs[i].1, frame_color
+            );
+            for o in verticies[i].get_connections().iter() {
+                window.draw_line(
+                    (projected_vertexs[i].0, projected_vertexs[i].1), 
+                    (
+                        projected_vertexs[*o].0,
+                        projected_vertexs[*o].1
+                    ),
+                    frame_color
+                );
+            }
+        }
     }
 
     pub fn set_frame_rate_restriction(&mut self, restrict: bool) -> &mut Self {
@@ -111,58 +197,8 @@ impl Simulator {
         self.objects.get_mut(id)
     }
 
-    // clears the currently rendered pixels from the screen ready to draw new ones
-    pub fn clear_from_screen(&mut self, object_id: &usize) {
-        let renderer = &self.renderer;
-        let window = &mut self.window;
-        let background_color = window.get_background_color();
-        let object = self.objects.get_mut(&object_id).unwrap();
-        let current_frame_color = object.get_frame_color();
-        let current_fill_color = object.get_fill_color();
-        object.set_frame_color(background_color);
-        object.set_fill_color(background_color);
-        Simulator::paint_object(object, renderer, window, true);
-        object.set_frame_color(current_frame_color);
-        object.set_fill_color(current_fill_color);
-    }
-
-    pub fn clear_screen(&mut self) {
-        self.paint_background();
-    }
-
-    fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, use_cached_transform: bool) {
-        let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
-
-        let verticies = obj.get_verticies();
-        let frame_color = obj.get_frame_color();
-
-        let object_transform = if use_cached_transform {
-            obj.get_cached_transform()
-        }
-        else {
-            obj.transform()
-        };
-
-        for i in 0..verticies.len() {
-            projected_vertexs.push((-1, -1));
-            projected_vertexs[i] = renderer.project_to_screen(object_transform, &verticies[i].get_rel_pos(), window.get_window_size());
-        }
-
-        for i in 0..projected_vertexs.len() {
-            window.draw_point(
-                projected_vertexs[i].0, projected_vertexs[i].1, frame_color
-            );
-            for o in verticies[i].get_connections().iter() {
-                window.draw_line(
-                    (projected_vertexs[i].0, projected_vertexs[i].1), 
-                    (
-                        projected_vertexs[*o].0,
-                        projected_vertexs[*o].1
-                    ),
-                    frame_color
-                );
-            }
-        }
+    pub fn object_count(&self) -> usize {
+        self.objects.len()
     }
 }
 //#endregion
@@ -175,6 +211,7 @@ pub struct SimulationBuilder {
     render_mode: RenderMode,
     width: u32,
     height: u32,
+    origin: OriginPosition,
 }
 
 impl SimulationBuilder {
@@ -186,60 +223,120 @@ impl SimulationBuilder {
             render_mode: RenderMode::R2D,
             width: 512,
             height: 512,
+            origin: OriginPosition::MIDDLEMIDDLE
         }
     }
 
-    pub fn restrict_frame_rate(&mut self) -> &mut Self {
+    pub fn restrict_frame_rate(mut self) -> Self {
+        self.ref_restrict_frame_rate();
+        self
+    }
+
+    pub fn ref_restrict_frame_rate(&mut self) -> &mut Self {
         self.restrict_frame_rate = true;
         self
     }
 
-    pub fn release_frame_rate(&mut self) -> &mut Self {
+    pub fn release_frame_rate(mut self) -> Self {
+        self.ref_release_frame_rate();
+        self
+    }
+
+    pub fn ref_release_frame_rate(&mut self) -> &mut Self {
         self.restrict_frame_rate = false;
         self
     }
 
-    pub fn set_target_frame_rate(&mut self, target: u16) -> &mut Self {
+    pub fn set_target_frame_rate(mut self, target: u16) -> Self {
+        self.ref_set_target_frame_rate(target);
+        self
+    }
+
+    pub fn ref_set_target_frame_rate(&mut self, target: u16) -> &mut Self {
         self.target_frame_rate = target;
         self
     }
 
-    pub fn lock_frame_rate(&mut self, target: u16) -> &mut Self {
-        self.restrict_frame_rate = true;
-        self.target_frame_rate = target;
+    pub fn lock_frame_rate(mut self, target: u16) -> Self {
+        self.ref_lock_frame_rate(target);
         self
     }
 
-    pub fn set_render_mode(&mut self, mode: RenderMode) -> &mut Self {
+    pub fn ref_lock_frame_rate(&mut self, target: u16) -> &mut Self {
+        self.ref_restrict_frame_rate();
+        self.ref_set_target_frame_rate(target);
+        self
+    }
+
+    pub fn set_render_mode(mut self, mode: RenderMode) -> Self {
+        self.ref_set_render_mode(mode);
+        self
+    }
+
+    pub fn ref_set_render_mode(&mut self, mode: RenderMode) -> &mut Self {
         self.render_mode = mode;
         self
     }
 
-    pub fn use_3d(&mut self) -> &mut Self {
+    pub fn use_3d(mut self) -> Self {
+        self.ref_use_3d();
+        self
+    }
+
+    pub fn ref_use_3d(&mut self) -> &mut Self {
         self.render_mode = RenderMode::R3D;
         self
     }
 
-    pub fn use_2d(&mut self) -> &mut Self {
+    pub fn use_2d(mut self) -> Self {
+        self.ref_use_2d();
+        self
+    }
+
+    pub fn ref_use_2d(&mut self) -> &mut Self {
         self.render_mode = RenderMode::R2D;
         self
     }
 
-    pub fn use_object_clearing(&mut self) -> &mut Self {
+    pub fn use_object_clearing(mut self) -> Self {
+        self.ref_use_object_clearing();
+        self
+    }
+
+    pub fn ref_use_object_clearing(&mut self) -> &mut Self {
         self.use_object_clearing = true;
         self
     }
 
-    pub fn use_background_fill(&mut self) -> &mut Self {
+    pub fn use_background_fill(mut self) -> Self {
+        self.ref_use_background_fill();
+        self
+    }
+
+    pub fn ref_use_background_fill(&mut self) -> &mut Self {
         self.use_object_clearing = false;
         self
     }
 
+    pub fn set_origin(mut self, origin: OriginPosition) -> Self {
+        self.ref_set_origin(origin);
+        self
+    }
+
+    pub fn ref_set_origin(&mut self, origin: OriginPosition) -> &mut Self {
+        self.origin = origin;
+        self
+    }
+
+    pub fn build(self, window_builder: WindowBuilder) -> Simulator {
+        self.ref_build(window_builder)
+    }
+
     // consume the windowbuilder used for constructing the window
-    pub fn build(&self, window_builder: WindowBuilder) -> Simulator {
+    pub fn ref_build(&self, window_builder: WindowBuilder) -> Simulator {
         Simulator {
             objects: HashMap::new(),
-            renderer: Renderer::new(self.render_mode),
+            renderer: Renderer::new(self.render_mode, self.origin),
             use_object_clearing: self.use_object_clearing,
             time: Time::new(),
             window: window_builder.build(),
