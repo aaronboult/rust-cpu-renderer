@@ -4,7 +4,7 @@
 #![windows_subsystem = "windows"]
 
 // https://docs.rs/winapi/*/x86_64-pc-windows-msvc/winapi/um/libloaderapi/index.html?search=winuser
-#[cfg(windows)] extern crate winapi;
+extern crate winapi;
 
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
@@ -126,7 +126,6 @@ use color::Color;
 
 static mut WINDOWCOUNT: u32 = 0;
 
-#[cfg(windows)]
 pub struct WindowBuilder{
     title: Vec<u16>,
     x: c_int,
@@ -143,7 +142,6 @@ pub struct WindowBuilder{
 }
 
 //#region WindowBuilder
-#[cfg(windows)]
 impl WindowBuilder {
     pub fn new() -> Self {
         Self {
@@ -502,7 +500,6 @@ impl WindowBuilder {
     }
 }
 
-#[cfg(windows)]
 impl std::fmt::Debug for WindowBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowBuilder")
@@ -523,7 +520,6 @@ impl std::fmt::Debug for WindowBuilder {
 }
 //#endregion
 
-#[cfg(windows)]
 struct UpdateState {
     nc_tracker: TRACKMOUSEEVENT,
     w_tracker: TRACKMOUSEEVENT,
@@ -532,7 +528,6 @@ struct UpdateState {
     cancel_draw: bool,
 }
 
-#[cfg(windows)]
 impl UpdateState {
     fn new(handle: HWND) -> Self {
         Self {
@@ -602,7 +597,6 @@ To Do:
     - Add maximum size option
 
 */
-#[cfg(windows)]
 pub struct Window {
     handle: HWND,
     device_context: HDC,
@@ -617,7 +611,6 @@ pub struct Window {
     frame_start_time: Option<Instant>,
 }
 
-#[cfg(windows)]
 impl Window {
     fn is_resizing(&mut self) -> bool {
         if unsafe{ GetAsyncKeyState(VK_LBUTTON) } as u16 & 0x8000 == 0x8000 && self.update_state.get_sizing_direction() != 0 {
@@ -630,6 +623,8 @@ impl Window {
     }
 
     fn defer_window(&mut self, x: i32, y: i32, width: i32, height: i32, flags: UINT) {
+        #[cfg(feature="window_profile")]
+        let defer_timer = Instant::now();
         unsafe {
             let begin_defer = BeginDeferWindowPos(1);
             let defer = DeferWindowPos(
@@ -647,11 +642,14 @@ impl Window {
                 panic!("{}", Error::last_os_error());
             }
         }
+        #[cfg(feature="window_profile")]
+        println!("\tDefer Window Time: {}ms", defer_timer.elapsed().as_millis());
     }
 
     fn update_bitmap(&mut self) {
+        #[cfg(feature="window_profile")]
+        let bitmap_timer = Instant::now();
         let (client_width, client_height) = self.get_client_size();
-        // println!("New bmap size: ({}, {})", client_width, client_height);
         unsafe {
             // ensure the memory from the last section of video memory is freed
             let free_result = VirtualFree(
@@ -675,6 +673,8 @@ impl Window {
             self.video_memory_pointer = video_memory_pointer;
             self.fill(self.background_color);
         }
+        #[cfg(feature="window_profile")]
+        println!("\tUpdate Bitmap Timer: {}ms", bitmap_timer.elapsed().as_millis());
     }
 
     fn clamp_width(&self, width: i32) -> i32 {
@@ -702,6 +702,8 @@ impl Window {
     }
 
     fn handle_resize(&mut self) {
+        #[cfg(feature="window_profile")]
+        let resize_timer = Instant::now();
         let (cursor_x, cursor_y) = get_cursor_pos();
         // ensure the cursor has moved
         if self.update_state.get_cached_cursor_pos() != (cursor_x, cursor_y) {
@@ -744,9 +746,13 @@ impl Window {
             // self.draw_screen();
             self.update_state.cancel_draw();
         }
+        #[cfg(feature="window_profile")]
+        println!("\tResize Timer: {}ms", resize_timer.elapsed().as_millis());
     }
 
     pub fn handle_messages(&mut self) {
+        #[cfg(feature="window_profile")]
+        let message_timer = Instant::now();
         unsafe {
             // only track the cursor if the window is being resized
             if self.is_resizing() {
@@ -824,10 +830,16 @@ impl Window {
                 }
             }
         }
+        #[cfg(feature="window_profile")]
+        println!("\tMessage Time: {}ms", message_timer.elapsed().as_millis());
     }
 
     // draws the window and handles any messages
     pub fn update(&mut self) {
+        #[cfg(feature="window_profile")]
+        let window_update_timer = Instant::now();
+        #[cfg(feature="window_profile")]
+        println!("Window Update:\t");
         // ensure the screen is drawn at least every other frame without interference
         // of windows messages (used to avoid flickering)
         if self.update_state.drawing_enabled() {
@@ -854,9 +866,13 @@ impl Window {
                 }
             }
         }
+        #[cfg(feature="window_profile")]
+        println!("\tWindow Update Time: {}ms\nEnd Window Update", window_update_timer.elapsed().as_millis());
     }
 
     fn draw_screen(&mut self) {
+        #[cfg(feature="window_profile")]
+        let screen_draw_timer = Instant::now();
         unsafe {
             let (width, height) = self.get_client_size();
             // used for handling maximize
@@ -883,6 +899,8 @@ impl Window {
                 );
             }
         }
+        #[cfg(feature="window_profile")]
+        println!("\tScreen Draw Time: {}ms", screen_draw_timer.elapsed().as_millis());
     }
 
     fn blip(&mut self, index: usize, color: Color) {
@@ -959,6 +977,8 @@ impl Window {
     }
 
     pub fn fill(&mut self, color: Color) {
+        #[cfg(feature="window_profile")]
+        let fill_timer = Instant::now();
         unsafe {
             let (width, height) = self.get_client_size();
             let color_u32: u32 = color.into();
@@ -968,6 +988,8 @@ impl Window {
                 offset += 1;
             }
         }
+        #[cfg(feature="window_profile")]
+        println!("\tFill Time: {}ms", fill_timer.elapsed().as_millis());
     }
 
     pub fn show_frame_rate(&mut self) {
@@ -1056,20 +1078,17 @@ impl Window {
 }
 
 // text in windows is in wide format
-#[cfg(windows)]
 fn win_32_string(text: &str) -> Vec<u16> {
     OsStr::new(text).encode_wide().chain(once(0)).collect()
 }
 
 // relative to top left of screen
-#[cfg(windows)]
 fn get_cursor_pos() -> (i32, i32) {
     let mut point = POINT{ x: 0, y: 0 };
     unsafe{ GetCursorPos(&mut point) };
     (point.x, point.y)
 }
 
-#[cfg(windows)]
 fn generate_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
     let mut bitmap_info: BITMAPINFO = Default::default();
     bitmap_info.bmiHeader = Default::default();

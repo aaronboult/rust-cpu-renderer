@@ -11,3 +11,12 @@ winapi = { version = "0.3.9", features = ["winuser", "libloaderapi", "memoryapi"
 
 [dependencies.rand]
 verion = "0.8.3"
+
+# allows for testing 3d and 2d
+[features]
+r3d=[]
+r2d=[]
+simulator_profile = []
+window_profile = []
+renderer_profile = []
+profile=["simulator_profile", "window_profile", "renderer_profile"]
