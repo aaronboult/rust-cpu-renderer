@@ -120,7 +120,7 @@ impl Simulator {
     fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, use_cached_transform: bool) {
         let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
-        let verticies = obj.get_verticies();
+        let vertices = obj.get_vertices();
         let frame_color = obj.get_frame_color();
 
         let object_transform = if use_cached_transform {
@@ -130,16 +130,16 @@ impl Simulator {
             obj.transform()
         };
 
-        for i in 0..verticies.len() {
+        for i in 0..vertices.len() {
             projected_vertexs.push((-1, -1));
-            projected_vertexs[i] = renderer.project_to_screen(object_transform, &verticies[i].get_rel_pos(), window.get_client_size());
+            projected_vertexs[i] = renderer.project_to_screen(object_transform, &vertices[i].get_rel_pos(), window.get_client_size());
         }
 
         for i in 0..projected_vertexs.len() {
             window.draw_point(
                 projected_vertexs[i].0, projected_vertexs[i].1, frame_color
             );
-            for o in verticies[i].get_connections().iter() {
+            for o in vertices[i].get_connections().iter() {
                 window.draw_line(
                     (projected_vertexs[i].0, projected_vertexs[i].1), 
                     (
@@ -212,6 +212,7 @@ pub struct SimulationBuilder {
     width: u32,
     height: u32,
     origin: OriginPosition,
+    allow_3d_rotation: bool
 }
 
 impl SimulationBuilder {
@@ -223,7 +224,8 @@ impl SimulationBuilder {
             render_mode: RenderMode::R2D,
             width: 512,
             height: 512,
-            origin: OriginPosition::MIDDLEMIDDLE
+            origin: OriginPosition::MIDDLEMIDDLE,
+            allow_3d_rotation: true
         }
     }
 
@@ -328,6 +330,26 @@ impl SimulationBuilder {
         self
     }
 
+    pub fn allow_3d_rotation(mut self) -> Self {
+        self.ref_allow_3d_rotation();
+        self
+    }
+
+    pub fn ref_allow_3d_rotation(&mut self) -> &mut Self {
+        self.allow_3d_rotation = true;
+        self
+    }
+
+    pub fn disable_3d_rotation(mut self) -> Self {
+        self.ref_disable_3d_rotation();
+        self
+    }
+
+    pub fn ref_disable_3d_rotation(&mut self) -> &mut Self {
+        self.allow_3d_rotation = false;
+        self
+    }
+
     pub fn build(self, window_builder: WindowBuilder) -> Simulator {
         self.ref_build(window_builder)
     }
@@ -336,7 +358,7 @@ impl SimulationBuilder {
     pub fn ref_build(&self, window_builder: WindowBuilder) -> Simulator {
         Simulator {
             objects: HashMap::new(),
-            renderer: Renderer::new(self.render_mode, self.origin),
+            renderer: Renderer::new(self.render_mode, self.origin, self.allow_3d_rotation),
             use_object_clearing: self.use_object_clearing,
             time: Time::new(),
             window: window_builder.build(),

@@ -44,16 +44,18 @@ pub struct Renderer {
     camera: Camera,
     resolution_x: f32,
     resolution_y: f32,
+    allow_3d_rotation: bool,
     origin: OriginPosition
 }
 
 impl Renderer {
-    pub fn new(mode: RenderMode, origin: OriginPosition) -> Self {
+    pub fn new(mode: RenderMode, origin: OriginPosition, allow_3d_rotation: bool) -> Self {
         Self {
             mode,
             camera: Camera::new(),
             resolution_x: 1920.0,
             resolution_y: 1080.0,
+            allow_3d_rotation,
             origin
         }
     }
@@ -65,6 +67,14 @@ impl Renderer {
     pub fn set_resolution(&mut self, resolution_x: f32, resolution_y: f32) {
         self.resolution_x = resolution_x;
         self.resolution_y = resolution_y;
+    }
+
+    pub fn allow_3d_rotation(&mut self) {
+        self.allow_3d_rotation = true;
+    }
+
+    pub fn disable_3d_rotation(&mut self) {
+        self.allow_3d_rotation = true;
     }
 
     fn get_origin(&self, window_size: (i32, i32)) -> (i32, i32) {
@@ -84,15 +94,63 @@ impl Renderer {
     pub fn project_to_screen(&self, transform: &Transform, vertex: &Vector3D, window_size: (i32, i32)) -> (i32, i32) {
         match self.mode {
             RenderMode::R2D => {
-                let (x_origin, y_origin) = self.get_origin(window_size);
-                (
-                    transform.position.x as i32 + x_origin,
-                    transform.position.y as i32 + y_origin
-                )
+                self.calculate_2d_projection(transform, vertex, self.get_origin(window_size))
             },
             RenderMode::R3D => {
                 self.calculate_3d_projection(transform, vertex, self.get_origin(window_size))
             }
+        }
+    }
+
+    pub fn calculate_2d_projection(&self, transform: &Transform, vertex: &Vector3D, origin_pos: (i32, i32)) -> (i32, i32) {
+        if self.allow_3d_rotation {
+            let point = Vector3D::new(
+                vertex.x,
+                vertex.y,
+                vertex.z
+            );
+    
+            let rotation = transform.rotation * (std::f32::consts::PI / 180.0);
+        
+            // scale the initial point
+            let projected_point = Matrix::from(point * transform.scale);
+    
+            let x_rotation_matrix = Matrix::from_vec(3, 3, vec![
+                1.0, 0.0, 0.0,
+                0.0, rotation.x.cos(), -rotation.x.sin(),
+                0.0, rotation.x.sin(), rotation.x.cos()
+            ]);
+    
+            let y_rotation_matrix = Matrix::from_vec(3, 3, vec![
+                rotation.y.cos(), 0.0, -rotation.y.sin(),
+                0.0, 1.0, 0.0,
+                rotation.y.sin(), 0.0, rotation.y.cos()
+            ]);
+    
+            let z_rotation_matrix = Matrix::from_vec(3, 3, vec![
+                rotation.z.cos(), -rotation.z.sin(), 0.0,
+                rotation.z.sin(), rotation.z.cos(), 0.0,
+                0.0, 0.0, 1.0
+            ]);
+    
+            let rotation_matrix = x_rotation_matrix * y_rotation_matrix * z_rotation_matrix;
+    
+            // multiplying rotation matrix with 3d column vector 
+            // produces another 3d column vector
+            let rotated_projection = Vector3D::from(rotation_matrix * projected_point)
+                + transform.position
+                - self.camera.transform.position;
+            
+            (
+                (rotated_projection.x + transform.position.x) as i32 + origin_pos.0,
+                (rotated_projection.y + transform.position.y) as i32 + origin_pos.1
+            )
+        }
+        else {
+            (
+                (vertex.x + transform.position.x) as i32 + origin_pos.0,
+                (vertex.y + transform.position.y) as i32 + origin_pos.1
+            )
         }
     }
 
@@ -245,6 +303,10 @@ impl Transform {
         else if self.rotation.z > 360.0 {
             self.rotation.z -= 360.0;
         }
+    }
+
+    pub fn rotate_2d(&mut self, angle: f32) {
+        self.rotate_z(angle);
     }
 
     pub fn scale(&mut self, x: f32, y: f32, z: f32) {
