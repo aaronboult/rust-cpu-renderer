@@ -1,6 +1,6 @@
 mod simulator;
 use simulator::{Color, OriginPosition};
-use simulator::objects::{Object, Cube, Spot};
+use simulator::objects::*;
 
 extern crate rand;
 use rand::Rng;
@@ -62,7 +62,7 @@ fn test_3d() -> Result<(), String> {
 }
 
 fn test_2d() -> Result<(), String> {
-    let mut rng = rand::thread_rng();
+    let mut _rng = rand::thread_rng();
 
     let window = simulator::WindowBuilder::new()
         .set_size(600, 800)
@@ -72,20 +72,37 @@ fn test_2d() -> Result<(), String> {
 
     let mut sim = simulator::SimulationBuilder::new()
         .use_2d()
-        .set_origin(OriginPosition::TOPLEFT)
+        .set_origin(OriginPosition::MIDDLEMIDDLE)
         .build(window);
 
     sim.paint_background();
 
-    const NUMBER_OF_SPOTS: u32 = 100_000;
+    // const NUMBER_OF_SPOTS: usize = 100_000;
 
-    for _ in 0..NUMBER_OF_SPOTS {
-        let obj = Spot::new(Color::RED)
-            .set_position(rng.gen::<f32>() * 600.0, rng.gen::<f32>() * 800.0);
-        obj.register(&mut sim);
+    // for _ in 0..NUMBER_OF_SPOTS {
+    //     let obj = Spot::new(Color::RED)
+    //         .set_position(_rng.gen::<f32>() * 600.0, _rng.gen::<f32>() * 800.0);
+    //         .register(&mut sim);
+    // }
+
+    // const NUMBER_OF_CIRCLES: usize = 100;
+
+    // for _ in 0..NUMBER_OF_CIRCLES {
+    //     Circle::new(Color::BLACK, Color::BLACK)
+    //         .set_radius(100.0)
+    //         .register(&mut sim);
+    // }
+
+    const NUMBER_OF_SQUARES: usize = 1;
+
+    for _ in 0..NUMBER_OF_SQUARES {
+        Rectangle::new(500.0 * _rng.gen::<f32>(), 500.0 * _rng.gen::<f32>()).register(&mut sim);
     }
 
     while sim.update().is_ok() {
+        let delta = sim.time.get_delta_time();
+        let obj = sim.get_object_by_id(&0).unwrap();
+        obj.transform_mut().rotate_2d(60.0 * delta);
     }
 
     Ok(())
