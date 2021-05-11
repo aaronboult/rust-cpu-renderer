@@ -69,7 +69,7 @@ impl Renderer {
         self.resolution_y = resolution_y;
     }
 
-    pub fn allow_3d_rotation(&mut self) {
+    pub fn enable_3d_rotation(&mut self) {
         self.allow_3d_rotation = true;
     }
 
@@ -147,9 +147,11 @@ impl Renderer {
             )
         }
         else {
+            let rotated_x = vertex.x * transform.rotation.z.cos() - vertex.y * transform.rotation.z.sin();
+            let rotated_y = vertex.x * transform.rotation.z.sin() + vertex.y * transform.rotation.z.cos();
             (
-                (vertex.x + transform.position.x) as i32 + origin_pos.0,
-                (vertex.y + transform.position.y) as i32 + origin_pos.1
+                (rotated_x + transform.position.x) as i32 + origin_pos.0,
+                (rotated_y + transform.position.y) as i32 + origin_pos.1
             )
         }
     }
