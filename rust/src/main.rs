@@ -73,11 +73,12 @@ fn test_2d() -> Result<(), String> {
     let mut sim = simulator::SimulationBuilder::new()
         .use_2d()
         .set_origin(OriginPosition::MIDDLEMIDDLE)
+        .disable_3d_rotation()
         .build(window);
 
     sim.paint_background();
 
-    // const NUMBER_OF_SPOTS: usize = 100_000;
+    // const NUMBER_OF_SPOTS: usize = 1;
 
     // for _ in 0..NUMBER_OF_SPOTS {
     //     let obj = Spot::new(Color::RED)
@@ -85,7 +86,7 @@ fn test_2d() -> Result<(), String> {
     //         .register(&mut sim);
     // }
 
-    // const NUMBER_OF_CIRCLES: usize = 100;
+    // const NUMBER_OF_CIRCLES: usize = 1;
 
     // for _ in 0..NUMBER_OF_CIRCLES {
     //     Circle::new(Color::BLACK, Color::BLACK)
@@ -93,16 +94,22 @@ fn test_2d() -> Result<(), String> {
     //         .register(&mut sim);
     // }
 
+    // const NUMBER_OF_RECTANGLES: usize = 1;
+
+    // for _ in 0..NUMBER_OF_RECTANGLES {
+    //     Rectangle::new(500.0 * _rng.gen::<f32>(), 500.0 * _rng.gen::<f32>()).register(&mut sim);
+    // }
+
     const NUMBER_OF_SQUARES: usize = 1;
 
     for _ in 0..NUMBER_OF_SQUARES {
-        Rectangle::new(500.0 * _rng.gen::<f32>(), 500.0 * _rng.gen::<f32>()).register(&mut sim);
+        Square::new(250.0 * _rng.gen::<f32>()).register(&mut sim);
     }
 
     while sim.update().is_ok() {
         let delta = sim.time.get_delta_time();
         let obj = sim.get_object_by_id(&0).unwrap();
-        obj.transform_mut().rotate_2d(60.0 * delta);
+        obj.transform_mut().rotate_2d(10.0 * delta);
     }
 
     Ok(())

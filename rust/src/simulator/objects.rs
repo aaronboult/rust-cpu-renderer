@@ -446,3 +446,7 @@ impl Rectangle {
     }
 }
 //#endregion
+
+//#region Triangle
+pub struct Triangle {}
+//#endregion
