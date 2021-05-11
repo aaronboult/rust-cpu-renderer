@@ -183,6 +183,23 @@ impl Simulator {
         self.set_frame_rate_display(false)
     }
 
+    pub fn enable_3d_rotation(&mut self) {
+        self.renderer.enable_3d_rotation();
+    }
+
+    pub fn disable_3d_rotation(&mut self) {
+        self.renderer.disable_3d_rotation();
+    }
+
+    pub fn set_3d_rotation(&mut self, toggle: bool) {
+        if toggle {
+            self.renderer.enable_3d_rotation();
+        }
+        else {
+            self.renderer.disable_3d_rotation();
+        }
+    }
+
     pub fn add_object(&mut self, object: Box<dyn Object>) -> usize {
         let id = object.get_id();
         self.objects.insert(id, object);
@@ -310,6 +327,16 @@ impl SimulationBuilder {
         self
     }
 
+    pub fn toggle_object_clearing(mut self) -> Self {
+        self.ref_toggle_object_clearing();
+        self
+    }
+
+    pub fn ref_toggle_object_clearing(&mut self) -> &mut Self {
+        self.use_object_clearing = !self.use_object_clearing;
+        self
+    }
+
     pub fn use_background_fill(mut self) -> Self {
         self.ref_use_background_fill();
         self
@@ -347,6 +374,16 @@ impl SimulationBuilder {
 
     pub fn ref_disable_3d_rotation(&mut self) -> &mut Self {
         self.allow_3d_rotation = false;
+        self
+    }
+
+    pub fn toggle_3d_rotation(mut self) -> Self {
+        self.ref_toggle_3d_rotation();
+        self
+    }
+
+    pub fn ref_toggle_3d_rotation(&mut self) -> &mut Self {
+        self.allow_3d_rotation = !self.allow_3d_rotation;
         self
     }
 
