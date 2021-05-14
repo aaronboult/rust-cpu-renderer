@@ -12,7 +12,6 @@ use std::iter::once;
 use std::mem;
 use std::ptr::{null_mut};
 use std::time::{Instant, Duration};
-use std::cmp::{min, max};
 
 use self::winapi::um::libloaderapi::GetModuleHandleW;
 use self::winapi::um::winuser::{
@@ -933,45 +932,52 @@ impl Window {
         self.blip(index as usize, color);
     }
     
+    // uses Bresenham’s Line Generation Algorithm
     pub fn draw_line(&mut self, point_a: (i32, i32), point_b: (i32, i32), color: Color) {
-        let (point_a, point_b) = if point_a.0 > point_b.0 {
-            (point_b, point_a)
+        let mut dx = point_b.0 - point_a.0;
+        let mut dy = point_b.1 - point_a.1;
+        let step_x = if dx < 0 {
+            dx = -dx;
+            -1
+        }
+        else{
+            1
+        };
+        let step_y = if dy < 0 {
+            dy = -dy;
+            -1
         }
         else {
-            (point_a, point_b)
+            1
         };
-        // using y=mx+c
-        // as well as the ratio dy:dx
-        let dy = point_b.1 as f32 - point_a.1 as f32;
-        let dx = point_b.0 as f32 - point_a.0 as f32;
-        if dy != 0.0 && dx != 0.0 {
-            let m = dy / dx;
-            let m_round = if m > 0.0 {
-                m.ceil() as i32
-            }
-            else {
-                m.floor() as i32
-            };
-            let c = point_a.1 as f32 - m * point_a.0 as f32;
-            for x in point_a.0..point_b.0 {
-                for y_diff in min(0, m_round)..max(0, m_round) {
-                    let y = m * x as f32 + c;
-                    self.draw_point(x, y_diff + y as i32, color);
+        // double dx and dy
+        dy <<= 1;
+        dx <<= 1;
+        let mut x = point_a.0;
+        let mut y = point_a.1;
+        self.draw_point(x, y, color);
+        if dx > dy {
+            let mut fraction = dy - (dx >> 1);
+            while x != point_b.0 {
+                x += step_x;
+                if fraction >= 0 {
+                    y += step_y;
+                    fraction -= dx;
                 }
+                fraction += dy;
+                self.draw_point(x, y, color);
             }
         }
-        else if dy == 0.0 { // no change in y
-            let min_x = min(point_a.0, point_b.0);
-            let max_x = max(point_a.0, point_b.0);
-            for x in min_x..max_x {
-                self.draw_point(x, point_a.1, color);
-            }
-        }
-        else { // no change in x
-            let min_y = min(point_a.1, point_b.1);
-            let max_y = max(point_a.1, point_b.1);
-            for y in min_y..max_y {
-                self.draw_point(point_a.0, y, color);
+        else {
+            let mut fraction = dx - (dy >> 2);
+            while y != point_b.1 {
+                y += step_y;
+                if fraction >= 0 {
+                    x += step_x;
+                    fraction -= dy;
+                }
+                fraction += dx;
+                self.draw_point(x, y, color);
             }
         }
     }
