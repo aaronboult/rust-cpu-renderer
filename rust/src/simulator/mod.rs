@@ -62,8 +62,10 @@ impl Simulator {
             profile_timer = Instant::now();
         }
 
+        let client_size = self.window.get_client_size();
+
         for obj in self.objects.values_mut() {
-            Simulator::paint_object(obj, &self.renderer, &mut self.window, false);
+            Simulator::paint_object(obj, &self.renderer, &mut self.window, client_size, false);
             if self.use_object_clearing {
                 obj.cache_transform();
             }
@@ -105,7 +107,7 @@ impl Simulator {
         let current_fill_color = object.get_fill_color();
         object.set_frame_color(background_color);
         object.set_fill_color(background_color);
-        Simulator::paint_object(object, renderer, window, true);
+        Simulator::paint_object(object, renderer, window, window.get_client_size(), true);
         object.set_frame_color(current_frame_color);
         object.set_fill_color(current_fill_color);
 
@@ -117,7 +119,8 @@ impl Simulator {
         self.paint_background();
     }
 
-    fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, use_cached_transform: bool) {
+    // https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation <---- implement this!
+    fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, client_size: (i32, i32), use_cached_transform: bool) {
         let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
         let vertices = obj.get_vertices();
@@ -131,14 +134,17 @@ impl Simulator {
         };
 
         for i in 0..vertices.len() {
-            projected_vertexs.push((-1, -1));
-            projected_vertexs[i] = renderer.project_to_screen(object_transform, &vertices[i].get_rel_pos(), window.get_client_size());
-        }
-
-        for i in 0..projected_vertexs.len() {
+            projected_vertexs.push(
+                renderer.project_to_screen(
+                    object_transform, &vertices[i].get_rel_pos(), client_size
+                )
+            );
             window.draw_point(
                 projected_vertexs[i].0, projected_vertexs[i].1, frame_color
             );
+        }
+
+        for i in 0..projected_vertexs.len() {
             for o in vertices[i].get_connections().iter() {
                 window.draw_line(
                     (projected_vertexs[i].0, projected_vertexs[i].1), 
