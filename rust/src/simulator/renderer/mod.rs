@@ -1,6 +1,9 @@
 pub mod linearalgebra;
 use linearalgebra::{Matrix, Vector2D, Vector3D};
 
+#[cfg(feature="renderer_profile")]
+use std::time::Instant;
+
 #[derive(Copy, Clone, Debug)]
 pub enum OriginPosition {
     TOPLEFT,
