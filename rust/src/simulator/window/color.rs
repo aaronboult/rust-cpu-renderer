@@ -16,7 +16,8 @@ pub struct Color {
 }
 
 macro_rules! const_color {
-    ($name:ident, $r:literal, $g:literal, $b:literal) => (pub const $name: Color = Color { r: $r, g: $g, b: $b, a: 0xff, mode: ColorMode::RGB };)
+    ($name:ident, $r:literal, $g:literal, $b:literal) => (pub const $name: Color = Color { r: $r, g: $g, b: $b, a: 0xff, mode: ColorMode::RGB };);
+    ($name:ident, $r:literal, $g:literal, $b:literal, $a:literal) => (pub const $name: Color = Color { r: $r, g: $g, b: $b, a: $a, mode: ColorMode::RGB };);
 }
 
 impl Color {
@@ -28,6 +29,7 @@ impl Color {
     const_color!(ORANGE, 0xff, 0xa5, 0x00);
     const_color!(GREY, 0x80, 0x80, 0x80);
     const_color!(GRAY, 0x80, 0x80, 0x80);
+    const_color!(TRANSPARENT, 0, 0, 0, 0);
 
     pub fn rgb(r: u8, g: u8, b: u8) -> Self {
         Color::rgba(r, g, b, 0xff)
