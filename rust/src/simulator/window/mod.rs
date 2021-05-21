@@ -62,7 +62,6 @@ use self::winapi::um::winuser::{
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
-    SC_SIZE,
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
     TME_LEAVE,
@@ -122,6 +121,10 @@ use std::io::Error;
 // export color module
 pub mod color;
 use color::Color;
+
+// export event module
+pub mod event;
+use event::{EventManager, WindowEvent, KeyboardEvent, MouseEvent};
 
 static mut WINDOWCOUNT: u32 = 0;
 
@@ -494,6 +497,7 @@ impl WindowBuilder {
                 show_frame_rate: self.show_frame_rate,
                 frame_count: 0,
                 frame_start_time: None,
+                event_manager: EventManager::new()
             }
         }
     }
@@ -591,11 +595,6 @@ impl UpdateState {
     }
 }
 
-/*
-To Do:
-    - Add maximum size option
-
-*/
 pub struct Window {
     handle: HWND,
     device_context: HDC,
@@ -608,6 +607,7 @@ pub struct Window {
     show_frame_rate: bool,
     frame_count: i32,
     frame_start_time: Option<Instant>,
+    event_manager: EventManager
 }
 
 impl Window {
@@ -740,9 +740,9 @@ impl Window {
                 self.clamp_height(height + dheight),
                 SWP_DRAWFRAME | SWP_NOOWNERZORDER
             );
+            self.event_manager.push_event(WindowEvent::WINDOWRESIZE);
             self.update_state.cache_cursor_pos((cursor_x, cursor_y));
             self.update_bitmap();
-            // self.draw_screen();
             self.update_state.cancel_draw();
         }
         #[cfg(feature="window_profile")]
@@ -768,6 +768,9 @@ impl Window {
                         if self.is_resizing() {
                             self.handle_resize();
                         }
+                        else {
+                            self.event_manager.push_event(MouseEvent::MOUSEMOVE);
+                        }
                     },
                     WM_MOUSELEAVE => {
                         if self.is_resizing() {
@@ -775,8 +778,11 @@ impl Window {
                         }
                     },
 
-                    WM_RBUTTONDOWN | WM_RBUTTONUP => {}, // handle events
-                    WM_LBUTTONDOWN | WM_LBUTTONUP => {}, // handle events
+                    WM_LBUTTONDOWN => self.event_manager.push_event(MouseEvent::MOUSEDOWN(0)),
+                    WM_LBUTTONUP => self.event_manager.push_event(MouseEvent::MOUSEUP(0)),
+
+                    WM_RBUTTONDOWN => self.event_manager.push_event(MouseEvent::MOUSEDOWN(1)),
+                    WM_RBUTTONUP => self.event_manager.push_event(MouseEvent::MOUSEUP(1)),
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {
@@ -813,13 +819,8 @@ impl Window {
                         }
                     },
                     WM_SYSCOMMAND => {
-                        match w_param {
-                            SC_SIZE => { println!("SC Sizing"); },
-                            _ => {
-                                TranslateMessage(message.as_ptr() as *const MSG);
-                                DispatchMessageW(message.as_ptr() as *const MSG);
-                            }
-                        }
+                        TranslateMessage(message.as_ptr() as *const MSG);
+                        DispatchMessageW(message.as_ptr() as *const MSG);
                     },
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
@@ -1080,6 +1081,14 @@ impl Window {
         let mut window_rect: RECT = Default::default();
         unsafe { GetWindowRect(wind, &mut window_rect) };
         window_rect
+    }
+
+    pub fn event_manager(&self) -> &EventManager {
+        &self.event_manager
+    }
+
+    pub fn event_manager_mut(&mut self) -> &mut EventManager {
+        &mut self.event_manager
     }
 }
 

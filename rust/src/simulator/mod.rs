@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
-// mod screen;
-// use screen::Screen;
-
 mod window;
 pub use window::WindowBuilder;
 pub use window::color::Color;
+pub use window::event;
+use event::{EventManager, EventIterator};
 use window::Window;
 
 use std::collections::HashMap;
@@ -222,6 +221,14 @@ impl Simulator {
 
     pub fn object_count(&self) -> usize {
         self.objects.len()
+    }
+
+    pub fn poll_events(&mut self) -> EventIterator {
+        self.window.event_manager_mut().poll_iter()
+    }
+
+    pub fn peek_events(&mut self) -> EventIterator {
+        self.window.event_manager_mut().peek_iter()
     }
 }
 //#endregion

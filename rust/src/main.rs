@@ -86,7 +86,7 @@ fn test_2d() -> Result<(), String> {
     //         .register(&mut sim);
     // }
 
-    const NUMBER_OF_CIRCLES: usize = 1000;
+    const NUMBER_OF_CIRCLES: usize = 1;
 
     for _ in 0..NUMBER_OF_CIRCLES {
         Circle::new(Color::BLACK, Color::BLACK)
@@ -140,6 +140,10 @@ fn test_2d() -> Result<(), String> {
             let m2 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
             let m3 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
             obj.transform_mut().translate(m1, m2, m3);
+        }
+
+        for event in sim.poll_events() {
+            println!("{:?}", event);
         }
     }
 
