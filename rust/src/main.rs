@@ -1,5 +1,6 @@
 mod simulator;
 use simulator::{Color, OriginPosition};
+use simulator::event::EventFilter;
 use simulator::objects::*;
 
 extern crate rand;
@@ -67,8 +68,8 @@ fn test_2d() -> Result<(), String> {
     let window = simulator::WindowBuilder::new()
         .set_size(600, 800)
         .set_background_color(Color::GREY)
-        .set_title("2D Test")
-        .show_frame_rate();
+        .set_title("2D Test");
+        // .show_frame_rate();
 
     let mut sim = simulator::SimulationBuilder::new()
         .use_2d()
@@ -78,13 +79,13 @@ fn test_2d() -> Result<(), String> {
 
     sim.paint_background();
 
-    // const NUMBER_OF_SPOTS: usize = 1;
+    const NUMBER_OF_SPOTS: usize = 0;
 
-    // for _ in 0..NUMBER_OF_SPOTS {
-    //     let obj = Spot::new(Color::RED)
-    //         .set_position(_rng.gen::<f32>() * 600.0, _rng.gen::<f32>() * 800.0)
-    //         .register(&mut sim);
-    // }
+    for _ in 0..NUMBER_OF_SPOTS {
+        let _obj = Spot::new(Color::RED)
+            .set_position(_rng.gen::<f32>() * 600.0, _rng.gen::<f32>() * 800.0)
+            .register(&mut sim);
+    }
 
     const NUMBER_OF_CIRCLES: usize = 1;
 
@@ -106,43 +107,8 @@ fn test_2d() -> Result<(), String> {
         Square::new(250.0 * _rng.gen::<f32>()).register(&mut sim);
     }
 
-    const ANGLE_MIN: f32 = -0.0001;
-    const ANGLE_MAX: f32 = 0.00001;
-
-    const MOVE_MIN: f32 = -50.0;
-    const MOVE_MAX: f32 = 50.0;
-
     while sim.update().is_ok() {
-        let delta = sim.time.get_delta_time();
-        let mut index_offset = 0;
-        for i in 0..NUMBER_OF_CIRCLES {
-            let obj = sim.get_object_by_id(&(i + index_offset)).unwrap();
-            obj.transform_mut().rotate_2d(_rng.gen_range(ANGLE_MIN, ANGLE_MAX) * delta);
-            let m1 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m2 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m3 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            obj.transform_mut().translate(m1, m2, m3);
-        }
-        index_offset += NUMBER_OF_CIRCLES;
-        for i in 0..NUMBER_OF_RECTANGLES {
-            let obj = sim.get_object_by_id(&(i + index_offset)).unwrap();
-            obj.transform_mut().rotate_2d(_rng.gen_range(ANGLE_MIN, ANGLE_MAX) * delta);
-            let m1 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m2 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m3 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            obj.transform_mut().translate(m1, m2, m3);
-        }
-        index_offset += NUMBER_OF_RECTANGLES;
-        for i in 0..NUMBER_OF_SQUARES {
-            let obj = sim.get_object_by_id(&(i + index_offset)).unwrap();
-            obj.transform_mut().rotate_2d(_rng.gen_range(ANGLE_MIN, ANGLE_MAX) * delta);
-            let m1 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m2 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            let m3 = _rng.gen_range(MOVE_MIN, MOVE_MAX) * delta;
-            obj.transform_mut().translate(m1, m2, m3);
-        }
-
-        for event in sim.poll_events() {
+        for event in sim.poll_events().filter(EventFilter::KEYBOARDEVENT | EventFilter::MOUSEEVENT) {
             println!("{:?}", event);
         }
     }
