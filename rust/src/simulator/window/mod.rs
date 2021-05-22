@@ -32,6 +32,7 @@ use self::winapi::um::winuser::{
     GetCursorPos,
     GetAsyncKeyState,
     ShowWindow,
+    GET_WHEEL_DELTA_WPARAM,
 };
 use self::winapi::um::winuser::{
     MSG,
@@ -57,6 +58,15 @@ use self::winapi::um::winuser::{
     WM_RBUTTONUP,
     WM_LBUTTONDOWN,
     WM_LBUTTONUP,
+    WM_MBUTTONDOWN,
+    WM_MBUTTONUP,
+    WM_MOUSEWHEEL,
+    WM_MOUSEHWHEEL,
+    WM_XBUTTONDOWN,
+    WM_XBUTTONUP,
+    WM_KEYDOWN,
+    WM_KEYUP,
+
     WM_NCLBUTTONDOWN,
     WM_NCLBUTTONUP,
     WM_NCMOUSEMOVE,
@@ -66,6 +76,8 @@ use self::winapi::um::winuser::{
     SWP_NOOWNERZORDER,
     TME_LEAVE,
     TME_NONCLIENT,
+
+    GET_XBUTTON_WPARAM,
 };
 // windows nc hit values
 use self::winapi::um::winuser::{
@@ -114,6 +126,10 @@ use self::winapi::shared::windef::{
     RECT,
     POINT,
 };
+use self::winapi::shared::windowsx::{
+    GET_X_LPARAM,
+    GET_Y_LPARAM,
+};
 
 use std::os::raw::c_int;
 use std::io::Error;
@@ -124,7 +140,7 @@ use color::Color;
 
 // export event module
 pub mod event;
-use event::{EventManager, WindowEvent, KeyboardEvent, MouseEvent};
+use event::{EventManager, WindowEvent, MouseEvent, MouseButton};
 
 static mut WINDOWCOUNT: u32 = 0;
 
@@ -760,9 +776,9 @@ impl Window {
             let message = mem::MaybeUninit::<MSG>::uninit();
             if PeekMessageW(message.as_ptr() as *mut MSG, self.handle, 0, 0, PM_REMOVE) != 0 {
                 let message_code = (*(message.as_ptr())).message;
-                let _l_param = (*(message.as_ptr())).lParam;
+                let l_param = (*(message.as_ptr())).lParam;
                 let w_param = (*(message.as_ptr())).wParam;
-                match message_code {
+                match message_code { // To implement: 519, 520, 522, 523, 524, 526
                     // client area events
                     WM_MOUSEMOVE => {
                         if self.is_resizing() {
@@ -778,11 +794,109 @@ impl Window {
                         }
                     },
 
-                    WM_LBUTTONDOWN => self.event_manager.push_event(MouseEvent::MOUSEDOWN(0)),
-                    WM_LBUTTONUP => self.event_manager.push_event(MouseEvent::MOUSEUP(0)),
+                    WM_LBUTTONDOWN => self.event_manager.push_event(
+                        MouseEvent::MOUSEDOWN(
+                            MouseButton::LEFTMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+                    WM_LBUTTONUP => self.event_manager.push_event(
+                        MouseEvent::MOUSEUP(
+                            MouseButton::LEFTMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
 
-                    WM_RBUTTONDOWN => self.event_manager.push_event(MouseEvent::MOUSEDOWN(1)),
-                    WM_RBUTTONUP => self.event_manager.push_event(MouseEvent::MOUSEUP(1)),
+                    WM_RBUTTONDOWN => self.event_manager.push_event(
+                        MouseEvent::MOUSEDOWN(
+                            MouseButton::RIGHTMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+                    WM_RBUTTONUP => self.event_manager.push_event(
+                        MouseEvent::MOUSEUP(
+                            MouseButton::RIGHTMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+
+                    WM_MBUTTONDOWN => self.event_manager.push_event(
+                        MouseEvent::MOUSEDOWN(
+                            MouseButton::MIDDLEMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+                    WM_MBUTTONUP => self.event_manager.push_event(
+                        MouseEvent::MOUSEUP(
+                            MouseButton::MIDDLEMOUSE,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+
+                    WM_XBUTTONDOWN => {
+                        let button = if GET_XBUTTON_WPARAM(w_param) == 1 {
+                            MouseButton::XBUTTON
+                        }
+                        else {
+                            MouseButton::YBUTTON
+                        };
+                        self.event_manager.push_event(
+                            MouseEvent::MOUSEDOWN(
+                                button,
+                                GET_X_LPARAM(l_param),
+                                GET_Y_LPARAM(l_param)
+                            )
+                        );
+                    },
+                    WM_XBUTTONUP => {
+                        let button = if GET_XBUTTON_WPARAM(w_param) == 1 {
+                            MouseButton::XBUTTON
+                        }
+                        else {
+                            MouseButton::YBUTTON
+                        };
+                        self.event_manager.push_event(
+                            MouseEvent::MOUSEDOWN(
+                                button,
+                                GET_X_LPARAM(l_param),
+                                GET_Y_LPARAM(l_param)
+                            )
+                        );
+                    },
+
+                    WM_MOUSEWHEEL => self.event_manager.push_event(
+                        MouseEvent::MOUSESCROLL(
+                            0,
+                            GET_WHEEL_DELTA_WPARAM(w_param),
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+                    WM_MOUSEHWHEEL => self.event_manager.push_event(
+                        MouseEvent::MOUSESCROLL(
+                            GET_WHEEL_DELTA_WPARAM(w_param),
+                            0,
+                            GET_X_LPARAM(l_param),
+                            GET_Y_LPARAM(l_param)
+                        )
+                    ),
+
+                    WM_KEYDOWN => {
+                        self.event_manager.register_key_down(w_param);
+                        TranslateMessage(message.as_ptr() as *const MSG);
+                        DispatchMessageW(message.as_ptr() as *const MSG);
+                    },
+                    WM_KEYUP => {
+                        self.event_manager.register_key_up(w_param);
+                        TranslateMessage(message.as_ptr() as *const MSG);
+                        DispatchMessageW(message.as_ptr() as *const MSG);
+                    },
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {

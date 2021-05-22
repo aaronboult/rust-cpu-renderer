@@ -4,7 +4,7 @@ mod window;
 pub use window::WindowBuilder;
 pub use window::color::Color;
 pub use window::event;
-use event::{EventManager, EventIterator};
+use event::EventIterator;
 use window::Window;
 
 use std::collections::HashMap;
@@ -77,6 +77,8 @@ impl Simulator {
         {
             profile_timer = Instant::now();
         }
+
+        self.window.event_manager_mut().flush();
         
         self.window.update();
 
