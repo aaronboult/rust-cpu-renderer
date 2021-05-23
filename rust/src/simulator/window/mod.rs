@@ -32,6 +32,8 @@ use self::winapi::um::winuser::{
     GetCursorPos,
     GetAsyncKeyState,
     ShowWindow,
+    IsIconic,
+    GetActiveWindow,
     GET_WHEEL_DELTA_WPARAM,
 };
 use self::winapi::um::winuser::{
@@ -46,6 +48,8 @@ use self::winapi::um::winuser::{
     WS_MAXIMIZEBOX,
     WS_SIZEBOX,
     SW_SHOWMAXIMIZED,
+    SW_SHOWNORMAL,
+    SC_RESTORE,
     PM_REMOVE,
     HOVER_DEFAULT,
     VK_LBUTTON,
@@ -72,8 +76,10 @@ use self::winapi::um::winuser::{
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
+
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
+
     TME_LEAVE,
     TME_NONCLIENT,
 
@@ -89,6 +95,9 @@ use self::winapi::um::winuser::{
     HTBOTTOM,
     HTBOTTOMLEFT,
     HTBOTTOMRIGHT,
+    HTCLOSE,
+    HTMAXBUTTON,
+    HTMINBUTTON,
     TRACKMOUSEEVENT,
 };
 use self::winapi::um::wingdi::{
@@ -157,6 +166,7 @@ pub struct WindowBuilder{
     start_maximized: bool,
     allow_resize: bool,
     allow_maximize: bool,
+    close_approval: bool
 }
 
 //#region WindowBuilder
@@ -175,6 +185,7 @@ impl WindowBuilder {
             start_maximized: false,
             allow_resize: true,
             allow_maximize: true,
+            close_approval: false,
         }
     }
 
@@ -406,6 +417,36 @@ impl WindowBuilder {
         self
     }
 
+    pub fn normal_close_mode(mut self) -> Self {
+        self.ref_normal_close_mode();
+        self
+    }
+
+    pub fn ref_normal_close_mode(&mut self) -> &mut Self {
+        self.close_approval = false;
+        self
+    }
+
+    pub fn approve_close_mode(mut self) -> Self {
+        self.ref_approve_close_mode();
+        self
+    }
+
+    pub fn ref_approve_close_mode(&mut self) -> &mut Self {
+        self.close_approval = true;
+        self
+    }
+
+    pub fn set_close_mode(mut self, approve: bool) -> Self {
+        self.ref_set_close_mode(approve);
+        self
+    }
+
+    pub fn ref_set_close_mode(&mut self, approve: bool) -> &mut Self {
+        self.close_approval = approve;
+        self
+    }
+
     pub fn build(mut self) -> Window {
         self.ref_build()
     }
@@ -513,7 +554,15 @@ impl WindowBuilder {
                 show_frame_rate: self.show_frame_rate,
                 frame_count: 0,
                 frame_start_time: None,
-                event_manager: EventManager::new()
+                event_manager: EventManager::new(),
+                maximized: self.start_maximized,
+                close_mode: if self.close_approval {
+                    CloseState::REQUIREAPPROVE
+                }
+                else {
+                    CloseState::NORMAL
+                },
+                focused: true
             }
         }
     }
@@ -611,6 +660,12 @@ impl UpdateState {
     }
 }
 
+pub enum CloseState {
+    NORMAL,
+    REQUIREAPPROVE,
+    AWAITINGAPPROVE
+}
+
 pub struct Window {
     handle: HWND,
     device_context: HDC,
@@ -623,18 +678,25 @@ pub struct Window {
     show_frame_rate: bool,
     frame_count: i32,
     frame_start_time: Option<Instant>,
-    event_manager: EventManager
+    event_manager: EventManager,
+    maximized: bool,
+    close_mode: CloseState,
+    focused: bool
 }
 
 impl Window {
     fn is_resizing(&mut self) -> bool {
-        if unsafe{ GetAsyncKeyState(VK_LBUTTON) } as u16 & 0x8000 == 0x8000 && self.update_state.get_sizing_direction() != 0 {
+        if self.left_mouse_down() && self.update_state.get_sizing_direction() != 0 {
             true
         }
         else {
             self.update_state.clear_sizing_direction();
             false
         }
+    }
+
+    fn left_mouse_down(&self) -> bool {
+        (unsafe{ GetAsyncKeyState(VK_LBUTTON) }) as u16 & 0x8000 == 0x8000
     }
 
     fn defer_window(&mut self, x: i32, y: i32, width: i32, height: i32, flags: UINT) {
@@ -667,15 +729,17 @@ impl Window {
         let (client_width, client_height) = self.get_client_size();
         unsafe {
             // ensure the memory from the last section of video memory is freed
-            let free_result = VirtualFree(
-                self.video_memory_pointer,
-                0,
-                MEM_RELEASE
-            );
-            if free_result == 0 {
-                panic!("{}", Error::last_os_error());
+            if self.video_memory_pointer != null_mut() {
+                let free_result = VirtualFree(
+                    self.video_memory_pointer,
+                    0,
+                    MEM_RELEASE
+                );
+                if free_result == 0 {
+                    panic!("{}", Error::last_os_error());
+                }
             }
-            let video_memory_pointer = VirtualAlloc(
+            self.video_memory_pointer = VirtualAlloc(
                 null_mut(),
                 (client_width * client_height * 4) as SIZE_T, // * 4 due to there being 4 bytes per pixel
                 MEM_RESERVE | MEM_COMMIT,
@@ -685,7 +749,6 @@ impl Window {
                 panic!("{}", Error::last_os_error());
             }
             self.bitmap_info = generate_bitmap_info(client_width, client_height);
-            self.video_memory_pointer = video_memory_pointer;
             self.fill(self.background_color);
         }
         #[cfg(feature="window_profile")]
@@ -908,6 +971,45 @@ impl Window {
                                 self.update_state.set_sizing_direction(w_param as LPARAM);
                                 self.update_state.cache_cursor_pos(get_cursor_pos());
                             },
+                            HTCLOSE => {
+                                #[allow(unreachable_patterns)]
+                                match self.close_mode {
+                                    CloseState::REQUIREAPPROVE => {
+                                        self.event_manager.push_event(WindowEvent::WINDOWCLOSEBEGIN);
+                                        unimplemented!("Close approval needs implementing");
+                                    },
+                                    CloseState::AWAITINGAPPROVE | CloseState::NORMAL | _ => {
+                                        self.event_manager.push_event(WindowEvent::WINDOWCLOSEFINAL);
+                                        TranslateMessage(message.as_ptr() as *const MSG);
+                                        DispatchMessageW(message.as_ptr() as *const MSG);
+                                    }
+                                }
+                            },
+                            HTMAXBUTTON => {
+                                self.maximized = !self.maximized;
+                                ShowWindow(
+                                    self.handle,
+                                    if self.maximized {
+                                        SW_SHOWMAXIMIZED
+                                    }
+                                    else {
+                                        SW_SHOWNORMAL
+                                    }
+                                );
+                                self.event_manager.push_event(
+                                    if self.maximized {
+                                        WindowEvent::WINDOWMAXIMIZE
+                                    }
+                                    else {
+                                        WindowEvent::WINDOWUNMAXIMIZE
+                                    }
+                                );
+                            },
+                            HTMINBUTTON => {
+                                self.event_manager.push_event(WindowEvent::WINDOWMINIMIZE);
+                                TranslateMessage(message.as_ptr() as *const MSG);
+                                DispatchMessageW(message.as_ptr() as *const MSG);
+                            },
                             _ => {
                                 TranslateMessage(message.as_ptr() as *const MSG);
                                 DispatchMessageW(message.as_ptr() as *const MSG);
@@ -933,9 +1035,13 @@ impl Window {
                         }
                     },
                     WM_SYSCOMMAND => {
+                        if w_param == SC_RESTORE {
+                            self.event_manager.push_event(WindowEvent::WINDOWRESTORE);
+                        }
                         TranslateMessage(message.as_ptr() as *const MSG);
                         DispatchMessageW(message.as_ptr() as *const MSG);
                     },
+                    
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
                         TranslateMessage(message.as_ptr() as *const MSG);
@@ -944,6 +1050,7 @@ impl Window {
                 }
             }
         }
+
         #[cfg(feature="window_profile")]
         println!("\tMessage Time: {}ms", message_timer.elapsed().as_millis());
     }
@@ -954,6 +1061,15 @@ impl Window {
         let window_update_timer = Instant::now();
         #[cfg(feature="window_profile")]
         println!("Window Update:\t");
+        let window_is_focused = unsafe { GetActiveWindow() } == self.handle;
+        if window_is_focused && !self.focused {
+            self.focused = true;
+            self.event_manager.push_event(WindowEvent::WINDOWFOCUS);
+        }
+        else if !window_is_focused && self.focused {
+            self.focused = false;
+            self.event_manager.push_event(WindowEvent::WINDOWBLUR);
+        }
         // ensure the screen is drawn at least every other frame without interference
         // of windows messages (used to avoid flickering)
         if self.update_state.drawing_enabled() {
@@ -962,21 +1078,23 @@ impl Window {
         else {
             self.update_state.enable_draw();
         }
-        self.draw_screen();
-        if self.show_frame_rate || self.frame_start_time.is_some() {
-            if self.frame_start_time.is_none() {
-                self.frame_start_time = Some(Instant::now());
-            }
-            const SECONDDURATION: Duration = Duration::from_secs(1);
-            self.frame_count += 1;
-            if self.frame_start_time.unwrap().elapsed() >= SECONDDURATION {
-                println!("Frames elapsed: {}", self.frame_count);
-                self.frame_count = 0;
-                if self.show_frame_rate {
+        if self.is_running() {
+            self.draw_screen();
+            if self.show_frame_rate || self.frame_start_time.is_some() {
+                if self.frame_start_time.is_none() {
                     self.frame_start_time = Some(Instant::now());
                 }
-                else {
-                    self.frame_start_time = None;
+                const SECONDDURATION: Duration = Duration::from_secs(1);
+                self.frame_count += 1;
+                if self.frame_start_time.unwrap().elapsed() >= SECONDDURATION {
+                    println!("Frames elapsed: {}", self.frame_count);
+                    self.frame_count = 0;
+                    if self.show_frame_rate {
+                        self.frame_start_time = Some(Instant::now());
+                    }
+                    else {
+                        self.frame_start_time = None;
+                    }
                 }
             }
         }
@@ -985,6 +1103,9 @@ impl Window {
     }
 
     fn draw_screen(&mut self) {
+        if self.is_minimized() {
+            return;
+        }
         #[cfg(feature="window_profile")]
         let screen_draw_timer = Instant::now();
         unsafe {
@@ -1127,6 +1248,10 @@ impl Window {
 
     pub fn is_running(&self) -> bool {
         unsafe { IsWindow(self.handle) != 0 }
+    }
+
+    pub fn is_minimized(&self) -> bool {
+        (unsafe { IsIconic(self.handle) }) != 0
     }
 
     pub fn get_background_color(&self) -> Color {
