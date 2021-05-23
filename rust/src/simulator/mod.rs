@@ -95,6 +95,10 @@ impl Simulator {
         self.window.fill(self.window.get_background_color());
     }
 
+    pub fn set_background_color(&mut self, color: Color) {
+        self.window.set_background_color(color);
+    }
+
     // clears the currently rendered pixels from the screen ready to draw new ones
     pub fn clear_from_screen(&mut self, object_id: &usize) {
         #[cfg(feature="simulator_profile")]
@@ -122,6 +126,10 @@ impl Simulator {
 
     // https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation <---- implement this!
     fn paint_object(obj: &Box<dyn Object>, renderer: &Renderer, window: &mut Window, client_size: (i32, i32), use_cached_transform: bool) {
+        if window.is_minimized() {
+            return;
+        }
+
         let mut projected_vertexs: Vec<(i32, i32)> = Vec::new();
 
         let vertices = obj.get_vertices();
