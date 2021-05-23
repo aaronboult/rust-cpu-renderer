@@ -193,16 +193,15 @@ pub enum Event {
 
     MOUSEDOWN(MouseEvent),
     MOUSEUP(MouseEvent),
-    MOUSEHELD(MouseEvent),
-    MOUSEPRESS(MouseEvent),
     MOUSESCROLL(MouseEvent),
     MOUSEMOVE,
 
     WINDOWRESIZE(WindowEvent),
-    WINDOWMOVE(WindowEvent),
+    WINDOWMOVE(WindowEvent), // need impl
     WINDOWFOCUS(WindowEvent),
     WINDOWBLUR(WindowEvent),
     WINDOWMAXIMIZE(WindowEvent),
+    WINDOWUNMAXIMIZE(WindowEvent),
     WINDOWMINIMIZE(WindowEvent),
     WINDOWRESTORE(WindowEvent),
     WINDOWCLOSEBEGIN(WindowEvent),
@@ -216,10 +215,9 @@ impl Event {
         match self {
             Self::KEYDOWN(_) | Self::KEYUP(_) | Self::KEYHELD(_) |Self::KEYPRESS(_) => EventFilter::KEYBOARDEVENT,
 
-            Self::MOUSEDOWN(_) | Self::MOUSEUP(_) | Self::MOUSEHELD(_) |
-                Self::MOUSEPRESS(_) |Self::MOUSESCROLL(_) |Self::MOUSEMOVE => EventFilter::MOUSEEVENT,
+            Self::MOUSEDOWN(_) | Self::MOUSEUP(_) | Self::MOUSESCROLL(_) |Self::MOUSEMOVE => EventFilter::MOUSEEVENT,
 
-            Self::WINDOWRESIZE(_) | Self::WINDOWMOVE(_) | Self::WINDOWFOCUS(_) | Self::WINDOWBLUR(_) | Self::WINDOWMAXIMIZE(_) |
+            Self::WINDOWRESIZE(_) | Self::WINDOWMOVE(_) | Self::WINDOWFOCUS(_) | Self::WINDOWBLUR(_) | Self::WINDOWMAXIMIZE(_) | Self::WINDOWUNMAXIMIZE(_) |
                 Self::WINDOWMINIMIZE(_) | Self::WINDOWRESTORE(_) | Self::WINDOWCLOSEBEGIN(_) | Self::WINDOWCLOSEFINAL(_) => EventFilter::WINDOWEVENT,
 
             _ => EventFilter::NOFILTER
@@ -269,8 +267,6 @@ pub enum MouseEvent {
     MOUSEDOWN(MouseButton, i32, i32), // button, x_pos, y_pos
     MOUSEUP(MouseButton, i32, i32), // button, x_pos, y_pos
     // called when a mouse button is held, mousepress called when a held mouse button is released
-    MOUSEHELD(MouseButton, u16), // button, repeated
-    MOUSEPRESS(MouseButton, u16), // keycode, repeated
     MOUSESCROLL(i16, i16, i32, i32), // x_direction, y_direction, x_pos, y_pos
     MOUSEMOVE
 }
@@ -281,8 +277,6 @@ impl Into<Event> for MouseEvent {
         match self {
             Self::MOUSEDOWN(_, _, _) => Event::MOUSEDOWN(self),
             Self::MOUSEUP(_, _, _) => Event::MOUSEUP(self),
-            Self::MOUSEHELD(_, _) => Event::MOUSEHELD(self),
-            Self::MOUSEPRESS(_, _) => Event::MOUSEPRESS(self),
             Self::MOUSESCROLL(_, _, _, _) => Event::MOUSESCROLL(self),
             Self::MOUSEMOVE => Event::MOUSEMOVE,
             _ => Event::UNKNOWN(())
@@ -297,6 +291,7 @@ pub enum WindowEvent {
     WINDOWFOCUS,
     WINDOWBLUR,
     WINDOWMAXIMIZE,
+    WINDOWUNMAXIMIZE,
     WINDOWMINIMIZE,
     WINDOWRESTORE,
     WINDOWCLOSEBEGIN, // called at the beginning of closing the window; allows for cancelling the close
@@ -312,6 +307,7 @@ impl Into<Event> for WindowEvent {
             Self::WINDOWFOCUS => Event::WINDOWFOCUS(self),
             Self::WINDOWBLUR => Event::WINDOWBLUR(self),
             Self::WINDOWMAXIMIZE => Event::WINDOWMAXIMIZE(self),
+            Self::WINDOWUNMAXIMIZE => Event::WINDOWUNMAXIMIZE(self),
             Self::WINDOWMINIMIZE => Event::WINDOWMINIMIZE(self),
             Self::WINDOWRESTORE => Event::WINDOWRESTORE(self),
             Self::WINDOWCLOSEBEGIN => Event::WINDOWCLOSEBEGIN(self),
