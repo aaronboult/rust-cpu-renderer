@@ -108,7 +108,7 @@ fn test_2d() -> Result<(), String> {
     }
 
     while sim.update().is_ok() {
-        for event in sim.poll_events().filter(EventFilter::KEYBOARDEVENT | EventFilter::MOUSEEVENT) {
+        for event in sim.poll_events().filter(EventFilter::WINDOWEVENT) {
             println!("{:?}", event);
         }
     }
