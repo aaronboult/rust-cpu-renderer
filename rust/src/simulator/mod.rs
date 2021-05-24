@@ -20,6 +20,12 @@ use objects::Object;
 pub mod time;
 use time::{Time, Instant, Duration};
 
+use std::ptr::null_mut;
+
+static mut SIMULATIONPTR: *mut Simulator = null_mut();
+
+type SimulationMoveCallback = fn(&mut Simulator) -> Result<(), &'static str>;
+
 //#region Simulator
 pub struct Simulator {
     objects: HashMap<usize, Box<dyn Object>>,
@@ -29,11 +35,17 @@ pub struct Simulator {
     pub time: Time,
     restrict_frame_rate: bool,
     frame_delay: Duration,
-    last_frame_start: Instant
+    last_frame_start: Instant,
+    simulation_move_callback: *mut SimulationMoveCallback,
 }
 
 impl Simulator {
     pub fn update(&mut self) -> Result<f32, ()> {
+        // ensure the pointer to the simulation is valid
+        unsafe {
+            SIMULATIONPTR = self as *mut Self;
+        }
+        self.window.set_move_callback(simulation_move_callback);
         if !self.window.is_running() {
             return Err(());
         }
@@ -240,6 +252,20 @@ impl Simulator {
     pub fn peek_events(&mut self) -> EventIterator {
         self.window.event_manager_mut().peek_iter()
     }
+
+    pub fn set_move_callback(&mut self, callback: SimulationMoveCallback) {
+        self.simulation_move_callback = callback as *mut SimulationMoveCallback;
+    }
+}
+
+fn simulation_move_callback() -> Result<(), &'static str> {
+    println!("Move callback before");
+    let r;
+    unsafe {
+        r = (*(&mut *SIMULATIONPTR).simulation_move_callback)(&mut *SIMULATIONPTR);
+    }
+    println!("Move callback after");
+    r
 }
 //#endregion
 
@@ -424,7 +450,8 @@ impl SimulationBuilder {
             window: window_builder.build(),
             restrict_frame_rate: self.restrict_frame_rate,
             frame_delay: Duration::from_nanos(1_000_000_000 / self.target_frame_rate as u64),
-            last_frame_start: Instant::now()
+            last_frame_start: Instant::now(),
+            simulation_move_callback: null_mut()
         }
     }
 }

@@ -1,4 +1,5 @@
 mod simulator;
+use simulator::Simulator;
 use simulator::{Color, OriginPosition};
 use simulator::event::EventFilter;
 use simulator::objects::*;
@@ -6,7 +7,7 @@ use simulator::objects::*;
 extern crate rand;
 use rand::Rng;
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), &'static str> {
     if cfg!(feature="r3d") {
         test_3d()
     }
@@ -14,12 +15,12 @@ fn main() -> Result<(), String> {
         test_2d()
     }
     else {
-        Err(String::from("Neither 3D or 2D was provided as a compiler feature"))
+        Err("Neither 3D or 2D was provided as a compiler feature")
     }
 }
 
 
-fn test_3d() -> Result<(), String> {
+fn test_3d() -> Result<(), &'static str> {
     let mut rng = rand::thread_rng();
 
     let window = simulator::WindowBuilder::new()
@@ -62,7 +63,7 @@ fn test_3d() -> Result<(), String> {
     Ok(())
 }
 
-fn test_2d() -> Result<(), String> {
+fn test_2d() -> Result<(), &'static str> {
     let mut _rng = rand::thread_rng();
 
     let window = simulator::WindowBuilder::new()
@@ -76,6 +77,8 @@ fn test_2d() -> Result<(), String> {
         .set_origin(OriginPosition::MIDDLEMIDDLE)
         .disable_3d_rotation()
         .build(window);
+    
+    sim.set_move_callback(mainloop_2d);
 
     sim.paint_background();
 
@@ -87,7 +90,7 @@ fn test_2d() -> Result<(), String> {
             .register(&mut sim);
     }
 
-    const NUMBER_OF_CIRCLES: usize = 1;
+    const NUMBER_OF_CIRCLES: usize = 0;
 
     for _ in 0..NUMBER_OF_CIRCLES {
         Circle::new(Color::BLACK, Color::BLACK)
@@ -101,17 +104,26 @@ fn test_2d() -> Result<(), String> {
         Rectangle::new(250.0 * _rng.gen::<f32>(), 250.0 * _rng.gen::<f32>()).register(&mut sim);
     }
 
-    const NUMBER_OF_SQUARES: usize = 0;
+    const NUMBER_OF_SQUARES: usize = 1;
 
     for _ in 0..NUMBER_OF_SQUARES {
         Square::new(250.0 * _rng.gen::<f32>()).register(&mut sim);
     }
 
     while sim.update().is_ok() {
-        for event in sim.poll_events().filter(EventFilter::WINDOWEVENT) {
-            println!("{:?}", event);
-        }
+        mainloop_2d(&mut sim).unwrap();
     }
 
+    Ok(())
+}
+
+fn mainloop_2d(sim: &mut Simulator) -> Result<(), &'static str> {
+    let delta = sim.time.get_delta_time();
+    for i in 0..sim.object_count() {
+        sim.get_object_by_id(&i).unwrap().transform_mut().rotate_2d(5.0 * delta);
+    }
+    for event in sim.poll_events().filter(EventFilter::WINDOWEVENT) {
+        println!("{:?}", event);
+    }
     Ok(())
 }

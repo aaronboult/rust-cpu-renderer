@@ -72,10 +72,11 @@ use self::winapi::um::winuser::{
     WM_KEYUP,
 
     WM_NCLBUTTONDOWN,
-    WM_NCLBUTTONUP,
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
+
+    WM_MOVE,
 
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
@@ -123,6 +124,7 @@ use self::winapi::um::memoryapi::{
 use winapi::shared::minwindef::{
     DWORD,
     LPARAM,
+    WPARAM,
     LRESULT,
     UINT,
 };
@@ -152,6 +154,10 @@ pub mod event;
 use event::{EventManager, WindowEvent, MouseEvent, MouseButton};
 
 static mut WINDOWCOUNT: u32 = 0;
+
+static mut WINDOWPTR: *mut Window = null_mut();
+
+pub type WindowMoveCallback = fn() -> Result<(), &'static str>;
 
 pub struct WindowBuilder{
     title: Vec<u16>,
@@ -465,7 +471,7 @@ impl WindowBuilder {
             // create the window class
             let wnd_class = WNDCLASSW {
                 style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
-                lpfnWndProc: Some(DefWindowProcW),
+                lpfnWndProc: Some(window_proc),
                 hInstance: hinstance, // instance handle for the window
                 lpszClassName: class_name.as_ptr(),
                 cbClsExtra: 0,
@@ -495,7 +501,7 @@ impl WindowBuilder {
             if self.start_maximized {
                 window_style |= WS_MAXIMIZEBOX; 
             }
-    
+
             // create a display window from the registered window class
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms632680(v=vs.85).aspx
             let handle = CreateWindowExW(
@@ -562,7 +568,8 @@ impl WindowBuilder {
                 else {
                     CloseState::NORMAL
                 },
-                focused: true
+                focused: true,
+                window_move_callback: null_mut(),
             }
         }
     }
@@ -681,7 +688,8 @@ pub struct Window {
     event_manager: EventManager,
     maximized: bool,
     close_mode: CloseState,
-    focused: bool
+    focused: bool,
+    window_move_callback: *mut WindowMoveCallback
 }
 
 impl Window {
@@ -829,6 +837,8 @@ impl Window {
     }
 
     pub fn handle_messages(&mut self) {
+        // ensure the WINDOWPTR points correctly to this window before processing messages
+        unsafe { WINDOWPTR = self as *mut Window; }
         #[cfg(feature="window_profile")]
         let message_timer = Instant::now();
         unsafe {
@@ -841,11 +851,13 @@ impl Window {
                 let message_code = (*(message.as_ptr())).message;
                 let l_param = (*(message.as_ptr())).lParam;
                 let w_param = (*(message.as_ptr())).wParam;
+                let mut use_default_protocol = true;
                 match message_code { // To implement: 519, 520, 522, 523, 524, 526
                     // client area events
                     WM_MOUSEMOVE => {
                         if self.is_resizing() {
                             self.handle_resize();
+                            use_default_protocol = false;
                         }
                         else {
                             self.event_manager.push_event(MouseEvent::MOUSEMOVE);
@@ -950,16 +962,8 @@ impl Window {
                         )
                     ),
 
-                    WM_KEYDOWN => {
-                        self.event_manager.register_key_down(w_param);
-                        TranslateMessage(message.as_ptr() as *const MSG);
-                        DispatchMessageW(message.as_ptr() as *const MSG);
-                    },
-                    WM_KEYUP => {
-                        self.event_manager.register_key_up(w_param);
-                        TranslateMessage(message.as_ptr() as *const MSG);
-                        DispatchMessageW(message.as_ptr() as *const MSG);
-                    },
+                    WM_KEYDOWN => self.event_manager.register_key_down(w_param),
+                    WM_KEYUP => self.event_manager.register_key_up(w_param),
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {
@@ -970,18 +974,18 @@ impl Window {
                             HTBOTTOM | HTLEFT => {
                                 self.update_state.set_sizing_direction(w_param as LPARAM);
                                 self.update_state.cache_cursor_pos(get_cursor_pos());
+                                use_default_protocol = false;
                             },
                             HTCLOSE => {
                                 #[allow(unreachable_patterns)]
                                 match self.close_mode {
                                     CloseState::REQUIREAPPROVE => {
                                         self.event_manager.push_event(WindowEvent::WINDOWCLOSEBEGIN);
+                                        use_default_protocol = false;
                                         unimplemented!("Close approval needs implementing");
                                     },
                                     CloseState::AWAITINGAPPROVE | CloseState::NORMAL | _ => {
                                         self.event_manager.push_event(WindowEvent::WINDOWCLOSEFINAL);
-                                        TranslateMessage(message.as_ptr() as *const MSG);
-                                        DispatchMessageW(message.as_ptr() as *const MSG);
                                     }
                                 }
                             },
@@ -1005,23 +1009,8 @@ impl Window {
                                     }
                                 );
                             },
-                            HTMINBUTTON => {
-                                self.event_manager.push_event(WindowEvent::WINDOWMINIMIZE);
-                                TranslateMessage(message.as_ptr() as *const MSG);
-                                DispatchMessageW(message.as_ptr() as *const MSG);
-                            },
-                            _ => {
-                                TranslateMessage(message.as_ptr() as *const MSG);
-                                DispatchMessageW(message.as_ptr() as *const MSG);
-                            }
-                        }
-                    },
-                    WM_NCLBUTTONUP => {
-                        match w_param as isize {
-                            _ => {
-                                TranslateMessage(message.as_ptr() as *const MSG);
-                                DispatchMessageW(message.as_ptr() as *const MSG);
-                            }
+                            HTMINBUTTON => self.event_manager.push_event(WindowEvent::WINDOWMINIMIZE),
+                            _ => ()
                         }
                     },
                     WM_NCMOUSEMOVE => {
@@ -1038,15 +1027,15 @@ impl Window {
                         if w_param == SC_RESTORE {
                             self.event_manager.push_event(WindowEvent::WINDOWRESTORE);
                         }
-                        TranslateMessage(message.as_ptr() as *const MSG);
-                        DispatchMessageW(message.as_ptr() as *const MSG);
                     },
                     
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
-                        TranslateMessage(message.as_ptr() as *const MSG);
-                        DispatchMessageW(message.as_ptr() as *const MSG);
                     }
+                }
+                if use_default_protocol {
+                    TranslateMessage(message.as_ptr() as *const MSG);
+                    DispatchMessageW(message.as_ptr() as *const MSG);
                 }
             }
         }
@@ -1290,17 +1279,17 @@ impl Window {
     }
 
     pub fn get_taskbar_height(&self) -> i32 {
-        Window::get_taskbar_height_from_handle(self.handle)
+        Self::get_taskbar_height_from_handle(self.handle)
     }
 
     pub fn get_taskbar_height_from_handle(wind: HWND) -> i32 {
-        let (_, window_height) = Window::get_window_size_from_handle(wind);
-        let (_, client_height) = Window::get_client_size_from_handle(wind);
+        let (_, window_height) = Self::get_window_size_from_handle(wind);
+        let (_, client_height) = Self::get_client_size_from_handle(wind);
         window_height - client_height
     }
 
     pub fn get_window_size_from_handle(wind: HWND) -> (i32, i32) {
-        let window_rect: RECT = Window::get_window_rect_from_handle(wind);
+        let window_rect: RECT = Self::get_window_rect_from_handle(wind);
         (
             window_rect.right - window_rect.left,
             window_rect.bottom - window_rect.top
@@ -1329,6 +1318,10 @@ impl Window {
     pub fn event_manager_mut(&mut self) -> &mut EventManager {
         &mut self.event_manager
     }
+
+    pub fn set_move_callback(&mut self, callback: WindowMoveCallback) {
+        self.window_move_callback = callback as *mut WindowMoveCallback;
+    }
 }
 
 // text in windows is in wide format
@@ -1354,4 +1347,24 @@ fn generate_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
     bitmap_info.bmiHeader.biCompression = BI_RGB;
 
     bitmap_info
+}
+
+unsafe extern "system"
+fn window_proc(handle: HWND, message: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+    match message {
+        WM_MOVE => {
+            if WINDOWPTR != null_mut() {
+                let window = &mut *WINDOWPTR;
+                window.event_manager.push_event(WindowEvent::WINDOWMOVE);
+                if window.window_move_callback != null_mut() {
+                    println!("Before call");
+                    (*window.window_move_callback)().unwrap();
+                    println!("After call");
+                }
+                window.draw_screen();
+            }
+            DefWindowProcW(handle, message, w_param, l_param)
+        },
+        _ => DefWindowProcW(handle, message, w_param, l_param)
+    }
 }
