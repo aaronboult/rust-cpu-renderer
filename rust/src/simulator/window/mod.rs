@@ -34,6 +34,8 @@ use self::winapi::um::winuser::{
     ShowWindow,
     IsIconic,
     GetActiveWindow,
+    SetTimer,
+    KillTimer,
     GET_WHEEL_DELTA_WPARAM,
 };
 use self::winapi::um::winuser::{
@@ -72,11 +74,16 @@ use self::winapi::um::winuser::{
     WM_KEYUP,
 
     WM_NCLBUTTONDOWN,
+    WM_NCLBUTTONUP,
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
 
+    WM_TIMER,
+
     WM_MOVE,
+    WM_ENTERSIZEMOVE,
+    WM_EXITSIZEMOVE,
 
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
@@ -157,8 +164,9 @@ static mut WINDOWCOUNT: u32 = 0;
 
 static mut WINDOWPTR: *mut Window = null_mut();
 
-pub type WindowMoveCallback = fn() -> Result<(), &'static str>;
+type MoveCallback = fn(&mut Window) -> Result<(), &'static str>;
 
+//#region WindowBuilder
 pub struct WindowBuilder{
     title: Vec<u16>,
     x: c_int,
@@ -175,7 +183,6 @@ pub struct WindowBuilder{
     close_approval: bool
 }
 
-//#region WindowBuilder
 impl WindowBuilder {
     pub fn new() -> Self {
         Self {
@@ -569,7 +576,8 @@ impl WindowBuilder {
                     CloseState::NORMAL
                 },
                 focused: true,
-                window_move_callback: null_mut(),
+                window_move_callback: |_|Ok(()),
+                timer_being_processed: false
             }
         }
     }
@@ -595,6 +603,7 @@ impl std::fmt::Debug for WindowBuilder {
 }
 //#endregion
 
+//#region UpdateState & CloseState
 struct UpdateState {
     nc_tracker: TRACKMOUSEEVENT,
     w_tracker: TRACKMOUSEEVENT,
@@ -672,7 +681,9 @@ pub enum CloseState {
     REQUIREAPPROVE,
     AWAITINGAPPROVE
 }
+//#endregion
 
+//#region Window
 pub struct Window {
     handle: HWND,
     device_context: HDC,
@@ -689,7 +700,8 @@ pub struct Window {
     maximized: bool,
     close_mode: CloseState,
     focused: bool,
-    window_move_callback: *mut WindowMoveCallback
+    window_move_callback: MoveCallback,
+    timer_being_processed: bool
 }
 
 impl Window {
@@ -847,7 +859,7 @@ impl Window {
                 self.update_state.track_mouse();
             }
             let message = mem::MaybeUninit::<MSG>::uninit();
-            if PeekMessageW(message.as_ptr() as *mut MSG, self.handle, 0, 0, PM_REMOVE) != 0 {
+            while PeekMessageW(message.as_ptr() as *mut MSG, self.handle, 0, 0, PM_REMOVE) != 0 {
                 let message_code = (*(message.as_ptr())).message;
                 let l_param = (*(message.as_ptr())).lParam;
                 let w_param = (*(message.as_ptr())).wParam;
@@ -967,6 +979,8 @@ impl Window {
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {
+                        println!("Set timer");
+                        SetTimer(self.handle, 0, 1, None);
                         match w_param as isize {
                             HTTOPLEFT | HTTOPRIGHT |
                             HTBOTTOMLEFT | HTBOTTOMRIGHT |
@@ -1013,6 +1027,9 @@ impl Window {
                             _ => ()
                         }
                     },
+                    WM_NCLBUTTONUP => {
+                        KillTimer(self.handle, 0);
+                    },
                     WM_NCMOUSEMOVE => {
                         if self.is_resizing() {
                             self.handle_resize();
@@ -1028,6 +1045,20 @@ impl Window {
                             self.event_manager.push_event(WindowEvent::WINDOWRESTORE);
                         }
                     },
+                    WM_TIMER => {
+                        // kill any active timers as they are only needed for when
+                        // windows activates modal loops
+                        if !self.timer_being_processed {
+                            KillTimer(self.handle, 0);
+                        }
+                        else {
+                            println!("Timer");
+                            use_default_protocol = false;
+                            self.timer_being_processed = true;
+                            (self.window_move_callback)(self).unwrap();
+                            self.timer_being_processed = false;
+                        }
+                    }
                     
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
@@ -1319,10 +1350,11 @@ impl Window {
         &mut self.event_manager
     }
 
-    pub fn set_move_callback(&mut self, callback: WindowMoveCallback) {
-        self.window_move_callback = callback as *mut WindowMoveCallback;
+    pub fn set_move_callback(&mut self, callback: MoveCallback) {
+        self.window_move_callback = callback;
     }
 }
+//#endregion
 
 // text in windows is in wide format
 fn win_32_string(text: &str) -> Vec<u16> {
@@ -1353,18 +1385,29 @@ unsafe extern "system"
 fn window_proc(handle: HWND, message: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     match message {
         WM_MOVE => {
-            if WINDOWPTR != null_mut() {
-                let window = &mut *WINDOWPTR;
-                window.event_manager.push_event(WindowEvent::WINDOWMOVE);
-                if window.window_move_callback != null_mut() {
-                    println!("Before call");
-                    (*window.window_move_callback)().unwrap();
-                    println!("After call");
-                }
-                window.draw_screen();
-            }
             DefWindowProcW(handle, message, w_param, l_param)
         },
+        WM_TIMER => {
+            if WINDOWPTR != null_mut() {
+                let window = &mut *WINDOWPTR;
+                window.timer_being_processed = true;
+                (window.window_move_callback)(window).unwrap();
+                window.timer_being_processed = false;
+            }
+            // println!("TIMER");
+            DefWindowProcW(handle, message, w_param, l_param)
+        },
+        WM_ENTERSIZEMOVE => {
+            println!("Enter size move");
+            SetTimer(handle, 0, 1, None);
+            DefWindowProcW(handle, message, w_param, l_param)
+        },
+        WM_EXITSIZEMOVE => {
+            println!("Enter size move");
+            KillTimer(handle, 0);
+            DefWindowProcW(handle, message, w_param, l_param)
+        },
+
         _ => DefWindowProcW(handle, message, w_param, l_param)
     }
 }
