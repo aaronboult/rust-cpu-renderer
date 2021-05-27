@@ -79,11 +79,9 @@ use self::winapi::um::winuser::{
     WM_NCMOUSELEAVE,
     WM_SYSCOMMAND,
 
-    WM_TIMER,
-
-    WM_MOVE,
     WM_ENTERSIZEMOVE,
     WM_EXITSIZEMOVE,
+    WM_NCHITTEST,
 
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
@@ -133,7 +131,7 @@ use winapi::shared::minwindef::{
     LPARAM,
     WPARAM,
     LRESULT,
-    UINT,
+    UINT
 };
 use self::winapi::shared::basetsd::{
     SIZE_T,
@@ -163,6 +161,8 @@ use event::{EventManager, WindowEvent, MouseEvent, MouseButton};
 static mut WINDOWCOUNT: u32 = 0;
 
 static mut WINDOWPTR: *mut Window = null_mut();
+
+const MODAL_TIMER_ID: usize = 0;
 
 type MoveCallback = fn(&mut Window) -> Result<(), &'static str>;
 
@@ -577,7 +577,8 @@ impl WindowBuilder {
                 },
                 focused: true,
                 window_move_callback: |_|Ok(()),
-                timer_being_processed: false
+                modal_running: false,
+                timer_callback_running: false
             }
         }
     }
@@ -701,7 +702,8 @@ pub struct Window {
     close_mode: CloseState,
     focused: bool,
     window_move_callback: MoveCallback,
-    timer_being_processed: bool
+    modal_running: bool,
+    timer_callback_running: bool
 }
 
 impl Window {
@@ -864,7 +866,7 @@ impl Window {
                 let l_param = (*(message.as_ptr())).lParam;
                 let w_param = (*(message.as_ptr())).wParam;
                 let mut use_default_protocol = true;
-                match message_code { // To implement: 519, 520, 522, 523, 524, 526
+                match message_code {
                     // client area events
                     WM_MOUSEMOVE => {
                         if self.is_resizing() {
@@ -979,8 +981,6 @@ impl Window {
 
                     // nc events (taskbar, resizing, syscommand etc)
                     WM_NCLBUTTONDOWN => {
-                        println!("Set timer");
-                        SetTimer(self.handle, 0, 1, None);
                         match w_param as isize {
                             HTTOPLEFT | HTTOPRIGHT |
                             HTBOTTOMLEFT | HTBOTTOMRIGHT |
@@ -1028,7 +1028,7 @@ impl Window {
                         }
                     },
                     WM_NCLBUTTONUP => {
-                        KillTimer(self.handle, 0);
+                        KillTimer(self.handle, MODAL_TIMER_ID);
                     },
                     WM_NCMOUSEMOVE => {
                         if self.is_resizing() {
@@ -1045,20 +1045,6 @@ impl Window {
                             self.event_manager.push_event(WindowEvent::WINDOWRESTORE);
                         }
                     },
-                    WM_TIMER => {
-                        // kill any active timers as they are only needed for when
-                        // windows activates modal loops
-                        if !self.timer_being_processed {
-                            KillTimer(self.handle, 0);
-                        }
-                        else {
-                            println!("Timer");
-                            use_default_protocol = false;
-                            self.timer_being_processed = true;
-                            (self.window_move_callback)(self).unwrap();
-                            self.timer_being_processed = false;
-                        }
-                    }
                     
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
@@ -1077,6 +1063,9 @@ impl Window {
 
     // draws the window and handles any messages
     pub fn update(&mut self) {
+        if !self.timer_callback_running {
+            self.modal_running = false;
+        }
         #[cfg(feature="window_profile")]
         let window_update_timer = Instant::now();
         #[cfg(feature="window_profile")]
@@ -1384,30 +1373,57 @@ fn generate_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
 unsafe extern "system"
 fn window_proc(handle: HWND, message: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     match message {
-        WM_MOVE => {
+        WM_NCLBUTTONDOWN => {
+            println!("Timer started");
+            set_modal_running();
+            SetTimer(handle, MODAL_TIMER_ID, 1, Some(modal_timer_proc));
             DefWindowProcW(handle, message, w_param, l_param)
         },
-        WM_TIMER => {
-            if WINDOWPTR != null_mut() {
-                let window = &mut *WINDOWPTR;
-                window.timer_being_processed = true;
-                (window.window_move_callback)(window).unwrap();
-                window.timer_being_processed = false;
-            }
-            // println!("TIMER");
+        WM_NCLBUTTONUP => {
+            println!("Timer ended");
+            KillTimer(handle, MODAL_TIMER_ID);
             DefWindowProcW(handle, message, w_param, l_param)
         },
         WM_ENTERSIZEMOVE => {
             println!("Enter size move");
-            SetTimer(handle, 0, 1, None);
+            set_modal_running();
+            SetTimer(handle, MODAL_TIMER_ID, 1, Some(modal_timer_proc));
             DefWindowProcW(handle, message, w_param, l_param)
         },
         WM_EXITSIZEMOVE => {
             println!("Enter size move");
-            KillTimer(handle, 0);
+            KillTimer(handle, MODAL_TIMER_ID);
+            DefWindowProcW(handle, message, w_param, l_param)
+        },
+        WM_NCHITTEST => {
+            println!("Hit test");
             DefWindowProcW(handle, message, w_param, l_param)
         },
 
         _ => DefWindowProcW(handle, message, w_param, l_param)
+    }
+}
+
+unsafe extern "system"
+fn modal_timer_proc(handle: HWND, _: UINT, _: usize, _: DWORD) {
+    println!("Timer proc");
+    if WINDOWPTR != null_mut() {
+        let window = &mut *WINDOWPTR;
+        if window.modal_running {
+            window.timer_callback_running = true;
+            (window.window_move_callback)(window).unwrap();
+            window.timer_callback_running = false;
+        }
+        else {
+            KillTimer(handle, MODAL_TIMER_ID);
+        }
+    }
+}
+
+unsafe
+fn set_modal_running() {
+    if WINDOWPTR != null_mut() {
+        let window = &mut *WINDOWPTR;
+        window.modal_running = true;
     }
 }
