@@ -77,11 +77,12 @@ use self::winapi::um::winuser::{
     WM_NCLBUTTONUP,
     WM_NCMOUSEMOVE,
     WM_NCMOUSELEAVE,
+
     WM_SYSCOMMAND,
+    WM_TIMER,
 
     WM_ENTERSIZEMOVE,
     WM_EXITSIZEMOVE,
-    WM_NCHITTEST,
 
     SWP_DRAWFRAME,
     SWP_NOOWNERZORDER,
@@ -706,148 +707,52 @@ pub struct Window {
     timer_callback_running: bool
 }
 
-impl Window {
-    fn is_resizing(&mut self) -> bool {
-        if self.left_mouse_down() && self.update_state.get_sizing_direction() != 0 {
-            true
+impl Window {    
+    // draws the window and handles any messages
+    pub fn update(&mut self) {
+        #[cfg(feature="window_profile")]
+        let window_update_timer = Instant::now();
+        #[cfg(feature="window_profile")]
+        println!("Window Update:\t");
+        let window_is_focused = unsafe { GetActiveWindow() } == self.handle;
+        if window_is_focused && !self.focused {
+            self.focused = true;
+            self.event_manager.push_event(WindowEvent::WINDOWFOCUS);
+        }
+        else if !window_is_focused && self.focused {
+            self.focused = false;
+            self.event_manager.push_event(WindowEvent::WINDOWBLUR);
+        }
+        // ensure the screen is drawn at least every other frame without interference
+        // of windows messages (used to avoid flickering)
+        if self.update_state.drawing_enabled() {
+            self.handle_messages();
         }
         else {
-            self.update_state.clear_sizing_direction();
-            false
+            self.update_state.enable_draw();
         }
-    }
-
-    fn left_mouse_down(&self) -> bool {
-        (unsafe{ GetAsyncKeyState(VK_LBUTTON) }) as u16 & 0x8000 == 0x8000
-    }
-
-    fn defer_window(&mut self, x: i32, y: i32, width: i32, height: i32, flags: UINT) {
-        #[cfg(feature="window_profile")]
-        let defer_timer = Instant::now();
-        unsafe {
-            let begin_defer = BeginDeferWindowPos(1);
-            let defer = DeferWindowPos(
-                begin_defer,
-                self.handle,
-                null_mut(),
-                x,
-                y,
-                width,
-                height,
-                flags
-            );
-            let result = EndDeferWindowPos(defer);
-            if result == 0 {
-                panic!("{}", Error::last_os_error());
-            }
-        }
-        #[cfg(feature="window_profile")]
-        println!("\tDefer Window Time: {}ms", defer_timer.elapsed().as_millis());
-    }
-
-    fn update_bitmap(&mut self) {
-        #[cfg(feature="window_profile")]
-        let bitmap_timer = Instant::now();
-        let (client_width, client_height) = self.get_client_size();
-        unsafe {
-            // ensure the memory from the last section of video memory is freed
-            if self.video_memory_pointer != null_mut() {
-                let free_result = VirtualFree(
-                    self.video_memory_pointer,
-                    0,
-                    MEM_RELEASE
-                );
-                if free_result == 0 {
-                    panic!("{}", Error::last_os_error());
+        if self.is_running() {
+            self.draw_screen();
+            if self.show_frame_rate || self.frame_start_time.is_some() {
+                if self.frame_start_time.is_none() {
+                    self.frame_start_time = Some(Instant::now());
+                }
+                const SECONDDURATION: Duration = Duration::from_secs(1);
+                self.frame_count += 1;
+                if self.frame_start_time.unwrap().elapsed() >= SECONDDURATION {
+                    println!("Frames elapsed: {}", self.frame_count);
+                    self.frame_count = 0;
+                    if self.show_frame_rate {
+                        self.frame_start_time = Some(Instant::now());
+                    }
+                    else {
+                        self.frame_start_time = None;
+                    }
                 }
             }
-            self.video_memory_pointer = VirtualAlloc(
-                null_mut(),
-                (client_width * client_height * 4) as SIZE_T, // * 4 due to there being 4 bytes per pixel
-                MEM_RESERVE | MEM_COMMIT,
-                PAGE_READWRITE
-            );
-            if self.video_memory_pointer.is_null() {
-                panic!("{}", Error::last_os_error());
-            }
-            self.bitmap_info = generate_bitmap_info(client_width, client_height);
-            self.fill(self.background_color);
         }
         #[cfg(feature="window_profile")]
-        println!("\tUpdate Bitmap Timer: {}ms", bitmap_timer.elapsed().as_millis());
-    }
-
-    fn clamp_width(&self, width: i32) -> i32 {
-        if width > self.maximum_size.0 && self.maximum_size.0 != -1 {
-            self.maximum_size.0
-        }
-        else if width < self.minimum_size.0 && self.minimum_size.0 != -1 {
-            self.minimum_size.0
-        }
-        else {
-            width
-        }
-    }
-
-    fn clamp_height(&self, height: i32) -> i32 {
-        if height > self.maximum_size.1 && self.maximum_size.1 != -1 {
-            self.maximum_size.1
-        }
-        else if height < self.minimum_size.1 && self.minimum_size.1 != -1 {
-            self.minimum_size.1
-        }
-        else {
-            height
-        }
-    }
-
-    fn handle_resize(&mut self) {
-        #[cfg(feature="window_profile")]
-        let resize_timer = Instant::now();
-        let (cursor_x, cursor_y) = get_cursor_pos();
-        // ensure the cursor has moved
-        if self.update_state.get_cached_cursor_pos() != (cursor_x, cursor_y) {
-            let window_rect = self.get_window_rect();
-            let (mut dx, mut dy) = (0, 0);
-            let (dwidth, dheight) = match self.update_state.get_sizing_direction() {
-                HTTOP => (0, window_rect.top - cursor_y), // needs translate
-                HTBOTTOM => (0, cursor_y - window_rect.bottom),
-                HTLEFT => (window_rect.left - cursor_x, 0), // needs translate
-                HTRIGHT => (cursor_x - window_rect.right, 0),
-                HTTOPLEFT => (window_rect.left - cursor_x, window_rect.top - cursor_y), // needs double translate
-                HTTOPRIGHT => (cursor_x - window_rect.right, window_rect.top - cursor_y), // needs translate
-                HTBOTTOMLEFT => (window_rect.left - cursor_x, cursor_y - window_rect.bottom), // needs translate
-                HTBOTTOMRIGHT => (cursor_x - window_rect.right, cursor_y - window_rect.bottom),
-                _ => (0, 0)
-            };
-            // second round of matching to assign dx and dy
-            match self.update_state.get_sizing_direction() {
-                HTTOP => dy = dheight,
-                HTLEFT => dx = dwidth,
-                HTTOPLEFT => {
-                    dx = dwidth;
-                    dy = dheight;
-                },
-                HTTOPRIGHT => dy = dheight,
-                HTBOTTOMLEFT => dx = dwidth,
-                _ => {}
-            }
-            let (width, height) = self.get_window_size();
-            // dx and dy are used to allow resizing using the top and left borders (remove to see the behaviour this prevents)
-            self.defer_window(
-                window_rect.left - dx,
-                window_rect.top - dy,
-                self.clamp_width(width + dwidth),
-                self.clamp_height(height + dheight),
-                SWP_DRAWFRAME | SWP_NOOWNERZORDER
-            );
-            self.event_manager.push_event(WindowEvent::WINDOWRESIZE);
-            self.update_state.cache_cursor_pos((cursor_x, cursor_y));
-            self.update_bitmap();
-            self.update_state.cancel_draw();
-        }
-        #[cfg(feature="window_profile")]
-        println!("\tResize Timer: {}ms", resize_timer.elapsed().as_millis());
+        println!("\tWindow Update Time: {}ms\nEnd Window Update", window_update_timer.elapsed().as_millis());
     }
 
     pub fn handle_messages(&mut self) {
@@ -861,7 +766,7 @@ impl Window {
                 self.update_state.track_mouse();
             }
             let message = mem::MaybeUninit::<MSG>::uninit();
-            while PeekMessageW(message.as_ptr() as *mut MSG, self.handle, 0, 0, PM_REMOVE) != 0 {
+            while PeekMessageW(message.as_ptr() as *mut MSG, self.handle, 0, 0, PM_REMOVE) > 0 {
                 let message_code = (*(message.as_ptr())).message;
                 let l_param = (*(message.as_ptr())).lParam;
                 let w_param = (*(message.as_ptr())).wParam;
@@ -1028,6 +933,7 @@ impl Window {
                         }
                     },
                     WM_NCLBUTTONUP => {
+                        set_modal_running(false);
                         KillTimer(self.handle, MODAL_TIMER_ID);
                     },
                     WM_NCMOUSEMOVE => {
@@ -1045,6 +951,12 @@ impl Window {
                             self.event_manager.push_event(WindowEvent::WINDOWRESTORE);
                         }
                     },
+
+                    WM_TIMER => {
+                        if self.timer_callback_running {
+                            use_default_protocol = false;
+                        }
+                    },
                     
                     _ => {
                         println!("Uncaught: {}", (*(message.as_ptr())).message);
@@ -1060,55 +972,144 @@ impl Window {
         #[cfg(feature="window_profile")]
         println!("\tMessage Time: {}ms", message_timer.elapsed().as_millis());
     }
-
-    // draws the window and handles any messages
-    pub fn update(&mut self) {
-        if !self.timer_callback_running {
-            self.modal_running = false;
-        }
-        #[cfg(feature="window_profile")]
-        let window_update_timer = Instant::now();
-        #[cfg(feature="window_profile")]
-        println!("Window Update:\t");
-        let window_is_focused = unsafe { GetActiveWindow() } == self.handle;
-        if window_is_focused && !self.focused {
-            self.focused = true;
-            self.event_manager.push_event(WindowEvent::WINDOWFOCUS);
-        }
-        else if !window_is_focused && self.focused {
-            self.focused = false;
-            self.event_manager.push_event(WindowEvent::WINDOWBLUR);
-        }
-        // ensure the screen is drawn at least every other frame without interference
-        // of windows messages (used to avoid flickering)
-        if self.update_state.drawing_enabled() {
-            self.handle_messages();
+    
+    fn is_resizing(&mut self) -> bool {
+        if left_mouse_down() && self.update_state.get_sizing_direction() != 0 {
+            true
         }
         else {
-            self.update_state.enable_draw();
+            self.update_state.clear_sizing_direction();
+            false
         }
-        if self.is_running() {
-            self.draw_screen();
-            if self.show_frame_rate || self.frame_start_time.is_some() {
-                if self.frame_start_time.is_none() {
-                    self.frame_start_time = Some(Instant::now());
-                }
-                const SECONDDURATION: Duration = Duration::from_secs(1);
-                self.frame_count += 1;
-                if self.frame_start_time.unwrap().elapsed() >= SECONDDURATION {
-                    println!("Frames elapsed: {}", self.frame_count);
-                    self.frame_count = 0;
-                    if self.show_frame_rate {
-                        self.frame_start_time = Some(Instant::now());
-                    }
-                    else {
-                        self.frame_start_time = None;
-                    }
-                }
+    }
+
+    fn defer_window(&mut self, x: i32, y: i32, width: i32, height: i32, flags: UINT) {
+        #[cfg(feature="window_profile")]
+        let defer_timer = Instant::now();
+        unsafe {
+            let begin_defer = BeginDeferWindowPos(1);
+            let defer = DeferWindowPos(
+                begin_defer,
+                self.handle,
+                null_mut(),
+                x,
+                y,
+                width,
+                height,
+                flags
+            );
+            let result = EndDeferWindowPos(defer);
+            if result == 0 {
+                panic!("{}", Error::last_os_error());
             }
         }
         #[cfg(feature="window_profile")]
-        println!("\tWindow Update Time: {}ms\nEnd Window Update", window_update_timer.elapsed().as_millis());
+        println!("\tDefer Window Time: {}ms", defer_timer.elapsed().as_millis());
+    }
+
+    fn update_bitmap(&mut self) {
+        #[cfg(feature="window_profile")]
+        let bitmap_timer = Instant::now();
+        let (client_width, client_height) = self.get_client_size();
+        unsafe {
+            // ensure the memory from the last section of video memory is freed
+            if self.video_memory_pointer != null_mut() {
+                let free_result = VirtualFree(
+                    self.video_memory_pointer,
+                    0,
+                    MEM_RELEASE
+                );
+                if free_result == 0 {
+                    panic!("{}", Error::last_os_error());
+                }
+            }
+            self.video_memory_pointer = VirtualAlloc(
+                null_mut(),
+                (client_width * client_height * 4) as SIZE_T, // * 4 due to there being 4 bytes per pixel
+                MEM_RESERVE | MEM_COMMIT,
+                PAGE_READWRITE
+            );
+            if self.video_memory_pointer.is_null() {
+                panic!("{}", Error::last_os_error());
+            }
+            self.bitmap_info = generate_bitmap_info(client_width, client_height);
+            self.fill(self.background_color);
+        }
+        #[cfg(feature="window_profile")]
+        println!("\tUpdate Bitmap Timer: {}ms", bitmap_timer.elapsed().as_millis());
+    }
+
+    fn clamp_width(&self, width: i32) -> i32 {
+        if width > self.maximum_size.0 && self.maximum_size.0 != -1 {
+            self.maximum_size.0
+        }
+        else if width < self.minimum_size.0 && self.minimum_size.0 != -1 {
+            self.minimum_size.0
+        }
+        else {
+            width
+        }
+    }
+
+    fn clamp_height(&self, height: i32) -> i32 {
+        if height > self.maximum_size.1 && self.maximum_size.1 != -1 {
+            self.maximum_size.1
+        }
+        else if height < self.minimum_size.1 && self.minimum_size.1 != -1 {
+            self.minimum_size.1
+        }
+        else {
+            height
+        }
+    }
+
+    fn handle_resize(&mut self) {
+        #[cfg(feature="window_profile")]
+        let resize_timer = Instant::now();
+        let (cursor_x, cursor_y) = get_cursor_pos();
+        // ensure the cursor has moved
+        if self.update_state.get_cached_cursor_pos() != (cursor_x, cursor_y) {
+            let window_rect = self.get_window_rect();
+            let (mut dx, mut dy) = (0, 0);
+            let (dwidth, dheight) = match self.update_state.get_sizing_direction() {
+                HTTOP => (0, window_rect.top - cursor_y), // needs translate
+                HTBOTTOM => (0, cursor_y - window_rect.bottom),
+                HTLEFT => (window_rect.left - cursor_x, 0), // needs translate
+                HTRIGHT => (cursor_x - window_rect.right, 0),
+                HTTOPLEFT => (window_rect.left - cursor_x, window_rect.top - cursor_y), // needs double translate
+                HTTOPRIGHT => (cursor_x - window_rect.right, window_rect.top - cursor_y), // needs translate
+                HTBOTTOMLEFT => (window_rect.left - cursor_x, cursor_y - window_rect.bottom), // needs translate
+                HTBOTTOMRIGHT => (cursor_x - window_rect.right, cursor_y - window_rect.bottom),
+                _ => (0, 0)
+            };
+            // second round of matching to assign dx and dy
+            match self.update_state.get_sizing_direction() {
+                HTTOP => dy = dheight,
+                HTLEFT => dx = dwidth,
+                HTTOPLEFT => {
+                    dx = dwidth;
+                    dy = dheight;
+                },
+                HTTOPRIGHT => dy = dheight,
+                HTBOTTOMLEFT => dx = dwidth,
+                _ => {}
+            }
+            let (width, height) = self.get_window_size();
+            // dx and dy are used to allow resizing using the top and left borders (remove to see the behaviour this prevents)
+            self.defer_window(
+                window_rect.left - dx,
+                window_rect.top - dy,
+                self.clamp_width(width + dwidth),
+                self.clamp_height(height + dheight),
+                SWP_DRAWFRAME | SWP_NOOWNERZORDER
+            );
+            self.event_manager.push_event(WindowEvent::WINDOWRESIZE);
+            self.update_state.cache_cursor_pos((cursor_x, cursor_y));
+            self.update_bitmap();
+            self.update_state.cancel_draw();
+        }
+        #[cfg(feature="window_profile")]
+        println!("\tResize Timer: {}ms", resize_timer.elapsed().as_millis());
     }
 
     fn draw_screen(&mut self) {
@@ -1370,33 +1371,35 @@ fn generate_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
     bitmap_info
 }
 
+fn left_mouse_down() -> bool {
+    (unsafe{ GetAsyncKeyState(VK_LBUTTON) }) as u16 & 0x8000 == 0x8000
+}
+
 unsafe extern "system"
 fn window_proc(handle: HWND, message: UINT, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     match message {
         WM_NCLBUTTONDOWN => {
             println!("Timer started");
-            set_modal_running();
+            set_modal_running(true);
             SetTimer(handle, MODAL_TIMER_ID, 1, Some(modal_timer_proc));
             DefWindowProcW(handle, message, w_param, l_param)
         },
         WM_NCLBUTTONUP => {
             println!("Timer ended");
+            set_modal_running(false);
             KillTimer(handle, MODAL_TIMER_ID);
             DefWindowProcW(handle, message, w_param, l_param)
         },
         WM_ENTERSIZEMOVE => {
             println!("Enter size move");
-            set_modal_running();
+            set_modal_running(true);
             SetTimer(handle, MODAL_TIMER_ID, 1, Some(modal_timer_proc));
             DefWindowProcW(handle, message, w_param, l_param)
         },
         WM_EXITSIZEMOVE => {
-            println!("Enter size move");
+            println!("Exit size move");
+            set_modal_running(false);
             KillTimer(handle, MODAL_TIMER_ID);
-            DefWindowProcW(handle, message, w_param, l_param)
-        },
-        WM_NCHITTEST => {
-            println!("Hit test");
             DefWindowProcW(handle, message, w_param, l_param)
         },
 
@@ -1407,23 +1410,26 @@ fn window_proc(handle: HWND, message: UINT, w_param: WPARAM, l_param: LPARAM) ->
 unsafe extern "system"
 fn modal_timer_proc(handle: HWND, _: UINT, _: usize, _: DWORD) {
     println!("Timer proc");
-    if WINDOWPTR != null_mut() {
-        let window = &mut *WINDOWPTR;
-        if window.modal_running {
-            window.timer_callback_running = true;
-            (window.window_move_callback)(window).unwrap();
-            window.timer_callback_running = false;
-        }
-        else {
-            KillTimer(handle, MODAL_TIMER_ID);
+    if left_mouse_down() {
+        if WINDOWPTR != null_mut() {
+            let window = &mut *WINDOWPTR;
+            if window.modal_running {
+                window.timer_callback_running = true;
+                (window.window_move_callback)(window).unwrap();
+                window.timer_callback_running = false;
+                return;
+            }
         }
     }
+    println!("Timer dead");
+    set_modal_running(false);
+    KillTimer(handle, MODAL_TIMER_ID);
 }
 
 unsafe
-fn set_modal_running() {
+fn set_modal_running(running: bool) {
     if WINDOWPTR != null_mut() {
         let window = &mut *WINDOWPTR;
-        window.modal_running = true;
+        window.modal_running = running;
     }
 }
